@@ -1,4 +1,19 @@
 """Telegram订单管理机器人主入口"""
+import os
+import sys
+import logging
+from pathlib import Path
+
+# 确保项目根目录在 Python 路径中（必须在所有导入之前）
+# 这样无论从哪里运行，都能找到所有模块
+project_root = Path(__file__).parent.absolute()
+project_root_str = str(project_root)
+
+# 添加项目根目录到 Python 路径（如果还没有）
+if project_root_str not in sys.path:
+    sys.path.insert(0, project_root_str)
+
+# 现在可以安全地导入所有模块
 from decorators import error_handler, admin_required, authorized_required, private_chat_only, group_chat_only
 from utils.schedule_executor import setup_scheduled_broadcasts
 from callbacks import button_callback, handle_order_action_callback, handle_schedule_callback
@@ -8,7 +23,7 @@ from handlers import (
     show_current_order,
     adjust_funds,
     create_attribution,
-
+    
     list_attributions,
     add_employee,
     remove_employee,
@@ -40,19 +55,6 @@ from telegram.ext import (
     CallbackQueryHandler
 )
 from telegram import error as telegram_error
-import logging
-import os
-import sys
-from pathlib import Path
-
-# 确保项目根目录在 Python 路径中
-# 这样无论从哪里运行，都能找到 config 模块
-project_root = Path(__file__).parent.absolute()
-project_root_str = str(project_root)
-
-# 添加项目根目录到 Python 路径（如果还没有）
-if project_root_str not in sys.path:
-    sys.path.insert(0, project_root_str)
 
 # 调试信息（部署时可以看到）
 try:
