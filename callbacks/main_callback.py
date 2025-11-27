@@ -58,10 +58,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # 使用统一的播报模板函数
+        # 本金12%版本：只显示本金12%金额
         from utils.broadcast_helpers import format_broadcast_message
         message = format_broadcast_message(
-            principal=principal_12,
-            principal_12=principal_12,  # 本金12%版本，两个值相同
+            principal=principal_12,  # 本金12%版本，只显示这个金额
+            principal_12=principal_12,
             outstanding_interest=outstanding_interest,
             date_str=date_str,
             weekday_str=weekday_str
