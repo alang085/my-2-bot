@@ -20,8 +20,8 @@ ORDER_STATES = {
     'breach_end': '违约完成'
 }
 
-# 历史订单阈值日期（2025-11-25之前的订单不扣款）
-HISTORICAL_THRESHOLD_DATE = (2025, 11, 25)
+# 历史订单阈值日期（2025-11-28之前的订单不扣款，不播报）
+HISTORICAL_THRESHOLD_DATE = (2025, 11, 28)
 
 # 日结时间阈值（23:00）
 DAILY_CUTOFF_HOUR = 23

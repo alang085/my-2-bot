@@ -33,7 +33,8 @@ async def handle_new_chat_members(update: Update, context: ContextTypes.DEFAULT_
 
         chat = update.effective_chat
         if not chat or not chat.title:
-            logger.warning(f"Bot added to group but no title found (chat_id: {chat.id if chat else 'unknown'})")
+            logger.warning(
+                f"Bot added to group but no title found (chat_id: {chat.id if chat else 'unknown'})")
             return
 
         logger.info(f"Bot added to group: '{chat.title}' (chat_id: {chat.id})")
@@ -49,26 +50,30 @@ async def handle_new_chat_title(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         if not update.message:
             return
-            
+
         chat = update.effective_chat
         new_title = update.message.new_chat_title
 
         if not new_title:
-            logger.warning(f"Group title changed but new_title is None (chat_id: {chat.id if chat else 'unknown'})")
+            logger.warning(
+                f"Group title changed but new_title is None (chat_id: {chat.id if chat else 'unknown'})")
             return
 
         if not chat:
             logger.warning("Group title changed but chat is None")
             return
 
-        logger.info(f"Group title changed to: '{new_title}' (chat_id: {chat.id})")
+        logger.info(
+            f"Group title changed to: '{new_title}' (chat_id: {chat.id})")
 
         existing_order = await db_operations.get_order_by_chat_id(chat.id)
         if existing_order:
-            logger.info(f"Order exists, updating state from title: '{new_title}'")
+            logger.info(
+                f"Order exists, updating state from title: '{new_title}'")
             await update_order_state_from_title(update, context, existing_order, new_title)
         else:
-            logger.info(f"No existing order, attempting to create from title: '{new_title}'")
+            logger.info(
+                f"No existing order, attempting to create from title: '{new_title}'")
             await try_create_order_from_title(update, context, chat, new_title, manual_trigger=False)
     except Exception as e:
         logger.error(f"Error in handle_new_chat_title: {e}", exc_info=True)
@@ -491,7 +496,7 @@ async def _handle_update_balance(update: Update, context: ContextTypes.DEFAULT_T
     """处理更新余额输入"""
     try:
         new_balance = float(text)
-        
+
         # 先检查账户是否存在
         account = await db_operations.get_payment_account(account_type)
         if not account:
@@ -500,7 +505,7 @@ async def _handle_update_balance(update: Update, context: ContextTypes.DEFAULT_T
             )
             context.user_data['state'] = None
             return
-        
+
         success = await db_operations.update_payment_account(account_type, balance=new_balance)
 
         if success:
@@ -519,7 +524,8 @@ async def _handle_update_balance(update: Update, context: ContextTypes.DEFAULT_T
                     from handlers.payment_handlers import show_paymaya
                     await show_paymaya(update, context)
             else:
-                actual_balance = updated_account.get('balance', 0) if updated_account else 0
+                actual_balance = updated_account.get(
+                    'balance', 0) if updated_account else 0
                 await update.message.reply_text(
                     f"⚠️ 更新可能未生效\n"
                     f"期望值: {new_balance:,.2f}\n"

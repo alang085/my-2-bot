@@ -140,7 +140,8 @@ async def try_create_order_from_title(update: Update, context: ContextTypes.DEFA
     """尝试从群标题创建订单（通用逻辑）"""
     chat_id = chat.id
 
-    logger.info(f"Attempting to create order from title: '{title}' (chat_id: {chat_id}, manual_trigger: {manual_trigger})")
+    logger.info(
+        f"Attempting to create order from title: '{title}' (chat_id: {chat_id}, manual_trigger: {manual_trigger})")
 
     # 1. 解析群名 (ID, Customer, Date, Amount)
     parsed_info = parse_order_from_title(title)
@@ -154,10 +155,12 @@ async def try_create_order_from_title(update: Update, context: ContextTypes.DEFA
                 f"Current title: {title}"
             )
         else:
-            logger.info(f"Group title '{title}' does not match order pattern (no 10 digits or A+10 digits found).")
+            logger.info(
+                f"Group title '{title}' does not match order pattern (no 10 digits or A+10 digits found).")
         return
-    
-    logger.info(f"Parsed order info: order_id={parsed_info['order_id']}, customer={parsed_info['customer']}, date={parsed_info['date']}, amount={parsed_info['amount']}")
+
+    logger.info(
+        f"Parsed order info: order_id={parsed_info['order_id']}, customer={parsed_info['customer']}, date={parsed_info['date']}, amount={parsed_info['amount']}")
 
     # 2. 检查是否已存在订单
     existing_order = await db_operations.get_order_by_chat_id(chat_id)
@@ -179,8 +182,8 @@ async def try_create_order_from_title(update: Update, context: ContextTypes.DEFA
     # 4. 初始状态识别 (根据群名标志)
     initial_state = get_state_from_title(title)
 
-    # 5. 检查日期阈值 (2025-11-25)
-    # 规则: 2025-11-25之前的订单录入规则不变 (作为历史数据导入，不扣款)
+    # 5. 检查日期阈值 (2025-11-28)
+    # 规则: 2025-11-28之前的订单作为历史数据导入，不扣款，不播报
     threshold_date = date(*HISTORICAL_THRESHOLD_DATE)
     is_historical = order_date < threshold_date
 
@@ -271,12 +274,13 @@ async def try_create_order_from_title(update: Update, context: ContextTypes.DEFA
             f"👤 Customer: {'New' if customer == 'A' else 'Returning'} (Historical)\n"
             f"💰 Amount: {amount:.2f}\n"
             f"📈 Status: {initial_state}\n"
-            f"⚠️ Funds Update: Skipped (Historical Data Only)"
+            f"⚠️ Funds Update: Skipped (Historical Data Only)\n"
+            f"📢 Broadcast: Skipped (Historical Data Only)"
         )
         await update.message.reply_text(msg)
 
-        # 历史订单也自动播报（基于订单日期计算下个周期）
-        await send_auto_broadcast(update, context, chat_id, amount, created_at)
+        # 历史订单不播报
+        logger.info(f"Historical order {order_id} created, skipping broadcast")
 
 
 async def send_auto_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, amount: float, order_date: str = None):
