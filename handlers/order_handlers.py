@@ -10,19 +10,22 @@ from decorators import authorized_required, group_chat_only
 logger = logging.getLogger(__name__)
 
 
+def _get_chat_info(update: Update):
+    """从update中提取chat_id和reply_func（辅助函数）"""
+    if update.message:
+        return update.message.chat_id, update.message.reply_text
+    elif update.callback_query:
+        return update.callback_query.message.chat_id, update.callback_query.message.reply_text
+    return None, None
+
+
 @authorized_required
 @group_chat_only
 async def set_normal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """转为正常状态"""
     try:
-        # 兼容 CallbackQuery
-        if update.message:
-            chat_id = update.message.chat_id
-            reply_func = update.message.reply_text
-        elif update.callback_query:
-            chat_id = update.callback_query.message.chat_id
-            reply_func = update.callback_query.message.reply_text
-        else:
+        chat_id, reply_func = _get_chat_info(update)
+        if not chat_id or not reply_func:
             return
 
         order = await db_operations.get_order_by_chat_id(chat_id)
@@ -64,14 +67,8 @@ async def set_normal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def set_overdue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """转为逾期状态"""
     try:
-        # 兼容 CallbackQuery
-        if update.message:
-            chat_id = update.message.chat_id
-            reply_func = update.message.reply_text
-        elif update.callback_query:
-            chat_id = update.callback_query.message.chat_id
-            reply_func = update.callback_query.message.reply_text
-        else:
+        chat_id, reply_func = _get_chat_info(update)
+        if not chat_id or not reply_func:
             return
 
         order = await db_operations.get_order_by_chat_id(chat_id)
@@ -112,14 +109,8 @@ async def set_overdue(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @group_chat_only
 async def set_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """标记订单为完成"""
-    # 兼容 CallbackQuery
-    if update.message:
-        chat_id = update.message.chat_id
-        reply_func = update.message.reply_text
-    elif update.callback_query:
-        chat_id = update.callback_query.message.chat_id
-        reply_func = update.callback_query.message.reply_text
-    else:
+    chat_id, reply_func = _get_chat_info(update)
+    if not chat_id or not reply_func:
         return
 
     order = await db_operations.get_order_by_chat_id(chat_id)
@@ -162,66 +153,66 @@ async def set_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @group_chat_only
 async def set_breach(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """标记为违约"""
-    # 兼容 CallbackQuery
-    if update.message:
-        chat_id = update.message.chat_id
-        reply_func = update.message.reply_text
-    elif update.callback_query:
-        chat_id = update.callback_query.message.chat_id
-        reply_func = update.callback_query.message.reply_text
-    else:
-        return
+    try:
+        chat_id, reply_func = _get_chat_info(update)
+        if not chat_id or not reply_func:
+            return
 
-    order = await db_operations.get_order_by_chat_id(chat_id)
-    if not order:
-        message = "❌ Failed: No active order."
-        await reply_func(message)
-        return
+        order = await db_operations.get_order_by_chat_id(chat_id)
+        if not order:
+            message = "❌ Failed: No active order."
+            await reply_func(message)
+            return
 
-    # 允许从 normal 或 overdue 变更为 breach
-    if order['state'] not in ['normal', 'overdue']:
-        message = "❌ Failed: Order must be normal or overdue."
-        await reply_func(message)
-        return
+        # 允许从 normal 或 overdue 变更为 breach
+        if order['state'] not in ['normal', 'overdue']:
+            message = "❌ Failed: Order must be normal or overdue."
+            await reply_func(message)
+            return
 
-    # 更新订单状态
-    await db_operations.update_order_state(chat_id, 'breach')
-    group_id = order['group_id']
-    amount = order['amount']
+        # 更新订单状态
+        if not await db_operations.update_order_state(chat_id, 'breach'):
+            message = "❌ Failed: DB Error"
+            await reply_func(message)
+            return
 
-    # 1. 有效订单减少
-    await update_all_stats('valid', -amount, -1, group_id)
+        group_id = order['group_id']
+        amount = order['amount']
 
-    # 2. 违约订单增加
-    await update_all_stats('breach', amount, 1, group_id)
+        # 1. 有效订单减少
+        await update_all_stats('valid', -amount, -1, group_id)
 
-    # 群组只回复成功，私聊显示详情
-    if is_group_chat(update):
-        await reply_func(f"✅ Marked as Breach\nAmount: {amount:.2f}")
-    else:
-        await reply_func(
-            f"✅ Order Marked as Breach!\n"
-            f"Order ID: {order['order_id']}\n"
-            f"Amount: {amount:.2f}"
-        )
+        # 2. 违约订单增加
+        await update_all_stats('breach', amount, 1, group_id)
+
+        # 群组只回复成功，私聊显示详情
+        if is_group_chat(update):
+            await reply_func(f"✅ Marked as Breach\nAmount: {amount:.2f}")
+        else:
+            await reply_func(
+                f"✅ Order Marked as Breach!\n"
+                f"Order ID: {order['order_id']}\n"
+                f"Amount: {amount:.2f}"
+            )
+    except Exception as e:
+        logger.error(f"更新订单状态时出错: {e}", exc_info=True)
+        message = "❌ Error processing request."
+        if update.message:
+            await update.message.reply_text(message)
+        elif update.callback_query:
+            await update.callback_query.message.reply_text(message)
 
 
 @authorized_required
 @group_chat_only
 async def set_breach_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """违约订单完成 - 请求金额"""
-    # 兼容 CallbackQuery
-    if update.message:
-        chat_id = update.message.chat_id
-        reply_func = update.message.reply_text
-        # 参数仅在 CommandHandler 时存在
-        args = context.args
-    elif update.callback_query:
-        chat_id = update.callback_query.message.chat_id
-        reply_func = update.callback_query.message.reply_text
-        args = None
-    else:
+    chat_id, reply_func = _get_chat_info(update)
+    if not chat_id or not reply_func:
         return
+    
+    # 参数仅在 CommandHandler 时存在
+    args = context.args if update.message else None
 
     order = await db_operations.get_order_by_chat_id(chat_id)
     if not order:

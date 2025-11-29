@@ -1,5 +1,6 @@
 """归属变更处理器"""
 import logging
+from typing import Tuple
 from telegram import Update
 from telegram.ext import ContextTypes
 import db_operations
@@ -13,7 +14,7 @@ async def change_orders_attribution(
     context: ContextTypes.DEFAULT_TYPE,
     orders: list,
     new_group_id: str
-) -> tuple[int, int]:
+) -> Tuple[int, int]:
     """
     批量修改订单归属
     

@@ -4,6 +4,7 @@ from telegram.ext import ContextTypes
 from handlers.order_handlers import (
     set_normal, set_overdue, set_end, set_breach, set_breach_end
 )
+from handlers.command_handlers import show_current_order
 import db_operations
 from handlers.attribution_handlers import change_orders_attribution
 
@@ -11,9 +12,13 @@ from handlers.attribution_handlers import change_orders_attribution
 async def handle_order_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理订单操作的回调"""
     query = update.callback_query
+    if not query:
+        return
 
     # 获取原始数据
     data = query.data
+    if not data:
+        return
 
     # 处理更改归属的回调
     if data == "order_action_change_attribution":
@@ -85,7 +90,6 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
         if success_count > 0:
             await query.answer("✅ 归属变更完成")
             # 刷新订单信息显示
-            from handlers.command_handlers import show_current_order
             await show_current_order(update, context)
         else:
             await query.answer("❌ 归属变更失败", show_alert=True)
@@ -93,7 +97,6 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
 
     # 处理返回按钮
     if data == "order_action_back":
-        from handlers.command_handlers import show_current_order
         await show_current_order(update, context)
         await query.answer()
         return

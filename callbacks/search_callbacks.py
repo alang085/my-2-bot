@@ -1,8 +1,11 @@
 """搜索相关回调处理器"""
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import db_operations
 from utils.message_helpers import display_search_results_helper
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -203,8 +206,6 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
             # 清除查找结果
             context.user_data.pop('search_orders', None)
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"归属变更失败: {e}", exc_info=True)
             await query.answer(f"❌ 归属变更失败: {str(e)}", show_alert=True)
         return

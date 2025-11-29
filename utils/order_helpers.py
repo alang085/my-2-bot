@@ -168,8 +168,8 @@ async def try_create_order_from_title(update: Update, context: ContextTypes.DEFA
         # 如果是手动触发，提示已存在
         if manual_trigger:
             await update.message.reply_text("⚠️ Order already exists in this group.")
-        # 如果是自动触发（改名），则尝试更新状态
-        elif not manual_trigger:
+        else:
+            # 如果是自动触发（改名），则尝试更新状态
             await update_order_state_from_title(update, context, existing_order, title)
         return
 
