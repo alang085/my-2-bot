@@ -39,13 +39,17 @@ def select_orders_by_amount(orders: List[Dict], target_amount: float) -> List[Di
     
     for order in sorted_orders:
         order_amount = order.get('amount', 0)
+        if order_amount <= 0:
+            continue  # 跳过金额为0或负数的订单
+        
         if current_total + order_amount <= target_amount:
             selected.append(order)
             current_total += order_amount
-        elif current_total < target_amount:
-            # 如果加上这个订单会超过目标，但当前总额还小于目标，可以选择这个订单
-            # 或者不选择，取决于策略。这里选择不添加，保持不超过目标
-            pass
+        elif current_total < target_amount and current_total + order_amount - target_amount < target_amount * 0.1:
+            # 如果超过目标金额但差额小于10%，仍然选择（允许小幅超过）
+            selected.append(order)
+            current_total += order_amount
+            break  # 达到目标后停止
     
     return selected
 

@@ -426,20 +426,32 @@ async def _handle_search_amount_input(update: Update, context: ContextTypes.DEFA
                 "输入 'cancel' 取消"
             )
             return
-        
+
+        # 发送处理中消息
+        processing_msg = await update.message.reply_text("⏳ 正在查找订单，请稍候...")
+
         # 获取所有有效订单（normal和overdue状态）
         criteria = {}
         all_valid_orders = await db_operations.search_orders_advanced(criteria)
-        
+
         if not all_valid_orders:
+            try:
+                await processing_msg.delete()
+            except:
+                pass
             await update.message.reply_text("❌ 没有找到有效订单")
             context.user_data['state'] = None
             return
-        
+
         # 计算总有效金额
-        total_valid_amount = sum(order.get('amount', 0) for order in all_valid_orders)
-        
+        total_valid_amount = sum(order.get('amount', 0)
+                                 for order in all_valid_orders)
+
         if total_valid_amount < target_amount:
+            try:
+                await processing_msg.delete()
+            except:
+                pass
             await update.message.reply_text(
                 f"❌ 总有效金额不足\n\n"
                 f"目标金额: {target_amount:,.2f}\n"
@@ -448,19 +460,41 @@ async def _handle_search_amount_input(update: Update, context: ContextTypes.DEFA
             )
             context.user_data['state'] = None
             return
-        
+
         # 均匀分配选择订单
-        selected_orders = distribute_orders_evenly_by_weekday(all_valid_orders, target_amount)
-        
+        try:
+            selected_orders = distribute_orders_evenly_by_weekday(
+                all_valid_orders, target_amount)
+        except Exception as e:
+            logger.error(f"分配订单时出错: {e}", exc_info=True)
+            try:
+                await processing_msg.delete()
+            except:
+                pass
+            await update.message.reply_text(f"⚠️ 处理订单时出错: {e}")
+            context.user_data['state'] = None
+            return
+
         if not selected_orders:
+            try:
+                await processing_msg.delete()
+            except:
+                pass
             await update.message.reply_text("❌ 无法选择订单，请尝试调整目标金额")
             context.user_data['state'] = None
             return
-        
+
+        # 删除处理中消息
+        try:
+            await processing_msg.delete()
+        except:
+            pass
+
         # 计算选中订单的总金额
-        selected_amount = sum(order.get('amount', 0) for order in selected_orders)
+        selected_amount = sum(order.get('amount', 0)
+                              for order in selected_orders)
         selected_count = len(selected_orders)
-        
+
         # 按星期分组统计
         weekday_stats = {}
         for order in selected_orders:
@@ -469,7 +503,7 @@ async def _handle_search_amount_input(update: Update, context: ContextTypes.DEFA
                 weekday_stats[weekday] = {'count': 0, 'amount': 0.0}
             weekday_stats[weekday]['count'] += 1
             weekday_stats[weekday]['amount'] += order.get('amount', 0)
-        
+
         # 显示结果
         result_msg = (
             f"💰 按总有效金额查找结果\n\n"
@@ -479,20 +513,24 @@ async def _handle_search_amount_input(update: Update, context: ContextTypes.DEFA
             f"选中订单数: {selected_count}\n\n"
             f"按星期分组统计:\n"
         )
-        
+
         weekday_names = ['一', '二', '三', '四', '五', '六', '日']
         for weekday in weekday_names:
             if weekday in weekday_stats:
                 stats = weekday_stats[weekday]
                 result_msg += f"周{weekday}: {stats['count']}个订单, {stats['amount']:,.2f}\n"
-        
+
         await update.message.reply_text(result_msg)
-        
+
         # 使用display_search_results_helper显示结果并锁定群组
-        await display_search_results_helper(update, context, selected_orders)
-        
+        try:
+            await display_search_results_helper(update, context, selected_orders)
+        except Exception as e:
+            logger.error(f"显示搜索结果时出错: {e}", exc_info=True)
+            await update.message.reply_text(f"⚠️ 显示结果时出错: {e}")
+
         context.user_data['state'] = None
-        
+
     except Exception as e:
         logger.error(f"按金额查找出错: {e}", exc_info=True)
         await update.message.reply_text(f"⚠️ 查找出错: {e}")
