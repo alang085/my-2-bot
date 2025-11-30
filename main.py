@@ -237,6 +237,8 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(
         authorized_required(handle_order_action_callback), pattern="^order_action_"))
     application.add_handler(CallbackQueryHandler(
+        authorized_required(handle_order_action_callback), pattern="^order_change_to_"))
+    application.add_handler(CallbackQueryHandler(
         authorized_required(handle_schedule_callback), pattern="^schedule_"))
     application.add_handler(CallbackQueryHandler(
         authorized_required(button_callback)))
