@@ -1,12 +1,15 @@
 """报表相关回调处理器"""
 from datetime import datetime
 import pytz
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import db_operations
 from utils.date_helpers import get_daily_period_date
 from handlers.report_handlers import generate_report_text
 from config import ADMIN_IDS
+
+logger = logging.getLogger(__name__)
 
 
 async def _check_expense_permission(user_id: int) -> bool:
@@ -48,7 +51,11 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             return
 
     if data == "report_record_company":
-        await query.answer()
+        # query.answer() 已在 button_callback 中调用，这里不需要再次调用
+        try:
+            await query.answer()
+        except Exception:
+            pass  # 忽略重复调用的错误
         date = get_daily_period_date()
         records = await db_operations.get_expense_records(date, date, 'company')
 
@@ -79,7 +86,14 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             [InlineKeyboardButton(
                 "🔙 返回", callback_data="report_view_today_ALL")]
         ])
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        try:
+            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            logger.error(f"编辑公司开销消息失败: {e}", exc_info=True)
+            try:
+                await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception as e2:
+                logger.error(f"发送公司开销消息失败: {e2}", exc_info=True)
         return
 
     if data == "report_expense_month_company":
@@ -112,7 +126,14 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             [InlineKeyboardButton(
                 "🔙 返回", callback_data="report_record_company")]
         ]
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        try:
+            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            logger.error(f"编辑消息失败: {e}", exc_info=True)
+            try:
+                await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception:
+                pass
         return
 
     if data == "report_expense_query_company":
@@ -146,7 +167,11 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if data == "report_record_other":
-        await query.answer()
+        # query.answer() 已在 button_callback 中调用，这里不需要再次调用
+        try:
+            await query.answer()
+        except Exception:
+            pass  # 忽略重复调用的错误
         date = get_daily_period_date()
         records = await db_operations.get_expense_records(date, date, 'other')
 
@@ -177,7 +202,14 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             [InlineKeyboardButton(
                 "🔙 返回", callback_data="report_view_today_ALL")]
         ])
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        try:
+            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            logger.error(f"编辑其他开销消息失败: {e}", exc_info=True)
+            try:
+                await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception as e2:
+                logger.error(f"发送其他开销消息失败: {e2}", exc_info=True)
         return
 
     if data == "report_expense_month_other":
@@ -207,7 +239,14 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             [InlineKeyboardButton(
                 "🔙 返回", callback_data="report_record_other")]
         ]
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        try:
+            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            logger.error(f"编辑消息失败: {e}", exc_info=True)
+            try:
+                await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception:
+                pass
         return
 
     if data == "report_expense_query_other":
