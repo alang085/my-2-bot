@@ -55,4 +55,4 @@ async def update_all_stats(field: str, amount: float, count: int = 0, group_id: 
         if count != 0:
             group_count_field = global_count_field
             await db_operations.update_grouped_data(
-                group_id, group_count_field, count)
+                group_id, group_count_field, float(count))
