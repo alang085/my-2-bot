@@ -239,6 +239,16 @@ def init_database():
     )
     ''')
 
+    # 创建用户归属ID映射表（用于限制用户只能查看特定归属ID的报表）
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS user_group_mapping (
+        user_id INTEGER PRIMARY KEY,
+        group_id TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
     conn.commit()
     conn.close()
     print(f"数据库 {DB_NAME} 初始化完成！")

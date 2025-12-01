@@ -8,7 +8,7 @@ from .message_handlers import (
     handle_text_input
 )
 from .search_handlers import search_orders
-from .report_handlers import show_report
+from .report_handlers import show_report, show_my_report
 from .amount_handlers import handle_amount_operation
 from .order_handlers import (
     set_normal,
@@ -29,7 +29,10 @@ from .command_handlers import (
     list_employees,
     update_weekday_groups,
     fix_statistics,
-    find_tail_orders
+    find_tail_orders,
+    set_user_group_id,
+    remove_user_group_id,
+    list_user_group_mappings
 )
 import os
 import sys
@@ -56,6 +59,9 @@ __all__ = [
     'update_weekday_groups',
     'fix_statistics',
     'find_tail_orders',
+    'set_user_group_id',
+    'remove_user_group_id',
+    'list_user_group_mappings',
     'set_normal',
     'set_overdue',
     'set_end',
@@ -63,6 +69,7 @@ __all__ = [
     'set_breach_end',
     'handle_amount_operation',
     'show_report',
+    'show_my_report',
     'search_orders',
     'handle_new_chat_members',
     'handle_new_chat_title',

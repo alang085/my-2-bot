@@ -12,6 +12,30 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
     """处理报表相关的回调"""
     query = update.callback_query
     data = query.data
+    
+    # 获取用户ID
+    user_id = update.effective_user.id if update.effective_user else None
+    if not user_id:
+        await query.answer("❌ 无法获取用户信息", show_alert=True)
+        return
+    
+    # 检查用户是否有权限查看特定归属ID的报表
+    # 如果用户有映射的归属ID，只能查看该归属ID的报表
+    user_group_id = await db_operations.get_user_group_id(user_id)
+    if user_group_id:
+        # 用户有权限限制，检查回调中的归属ID
+        if data.startswith("report_view_"):
+            # 提取归属ID
+            parts = data.split("_")
+            if len(parts) >= 4:
+                callback_group_id = parts[3] if parts[3] != 'ALL' else None
+                if callback_group_id and callback_group_id != user_group_id:
+                    await query.answer("❌ 您没有权限查看该归属ID的报表", show_alert=True)
+                    return
+        elif data.startswith("report_menu_attribution") or data.startswith("report_search_orders"):
+            # 限制用户不能使用归属查询和查找功能
+            await query.answer("❌ 您没有权限使用此功能", show_alert=True)
+            return
 
     if data == "report_record_company":
         date = get_daily_period_date()
@@ -296,6 +320,10 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         group_id = parts[3]
 
     group_id = None if group_id == 'ALL' else group_id
+    
+    # 如果用户有权限限制，确保使用用户的归属ID
+    if user_group_id:
+        group_id = user_group_id
 
     if view_type == 'today':
         date = get_daily_period_date()
@@ -315,21 +343,27 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
                     "📝 其他开销", callback_data="report_record_other")
             ]
         ]
-        # 全局视图添加通用按钮
-        if not group_id:
+        # 全局视图添加通用按钮（但用户有权限限制时不显示）
+        if not group_id and not user_group_id:
             keyboard.append([
                 InlineKeyboardButton(
                     "🔍 按归属查询", callback_data="report_menu_attribution"),
                 InlineKeyboardButton(
                     "🔎 查找订单", callback_data="report_search_orders")
             ])
-        else:
-            keyboard.append([InlineKeyboardButton(
-                "🔙 返回", callback_data="report_view_today_ALL")])
+        elif group_id:
+            # 如果用户有权限限制，不显示返回按钮（因为不能返回全局视图）
+            if not user_group_id:
+                keyboard.append([InlineKeyboardButton(
+                    "🔙 返回", callback_data="report_view_today_ALL")])
 
         await query.edit_message_text(report_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif view_type == 'month':
+        # 如果用户有权限限制，确保使用用户的归属ID
+        if user_group_id:
+            group_id = user_group_id
+            
         tz = pytz.timezone('Asia/Shanghai')
         now = datetime.now(tz)
         start_date = now.replace(day=1).strftime("%Y-%m-%d")
@@ -348,6 +382,10 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.edit_message_text(report_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif view_type == 'query':
+        # 如果用户有权限限制，确保使用用户的归属ID
+        if user_group_id:
+            group_id = user_group_id
+        
         await query.message.reply_text(
             "📆 请输入查询日期范围：\n"
             "格式1 (单日): 2024-01-01\n"

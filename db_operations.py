@@ -594,6 +594,47 @@ def is_user_authorized(conn, cursor, user_id: int) -> bool:
         'SELECT 1 FROM authorized_users WHERE user_id = ?', (user_id,))
     return cursor.fetchone() is not None
 
+# ========== 用户归属ID映射操作 ==========
+
+
+@db_query
+def get_user_group_id(conn, cursor, user_id: int) -> Optional[str]:
+    """获取用户有权限查看的归属ID"""
+    cursor.execute(
+        'SELECT group_id FROM user_group_mapping WHERE user_id = ?', (user_id,))
+    row = cursor.fetchone()
+    return row[0] if row else None
+
+
+@db_transaction
+def set_user_group_id(conn, cursor, user_id: int, group_id: str) -> bool:
+    """设置用户有权限查看的归属ID"""
+    cursor.execute('''
+    INSERT OR REPLACE INTO user_group_mapping (user_id, group_id, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ''', (user_id, group_id))
+    return True
+
+
+@db_transaction
+def remove_user_group_id(conn, cursor, user_id: int) -> bool:
+    """移除用户的归属ID映射"""
+    cursor.execute(
+        'DELETE FROM user_group_mapping WHERE user_id = ?', (user_id,))
+    return cursor.rowcount > 0
+
+
+@db_query
+def get_all_user_group_mappings(conn, cursor) -> List[Dict]:
+    """获取所有用户归属ID映射"""
+    cursor.execute('''
+    SELECT user_id, group_id, created_at, updated_at
+    FROM user_group_mapping
+    ORDER BY user_id
+    ''')
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
 # ========== 支付账号操作 ==========
 
 

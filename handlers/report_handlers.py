@@ -127,3 +127,42 @@ async def show_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(report_text, reply_markup=reply_markup)
+
+
+@error_handler
+@private_chat_only
+async def show_my_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """显示用户有权限查看的归属ID报表（仅限该归属ID）"""
+    user_id = update.effective_user.id if update.effective_user else None
+    if not user_id:
+        await update.message.reply_text("❌ 无法获取用户信息")
+        return
+
+    # 获取用户有权限查看的归属ID
+    group_id = await db_operations.get_user_group_id(user_id)
+    if not group_id:
+        await update.message.reply_text(
+            "❌ 您没有权限查看任何归属ID的报表。\n"
+            "请联系管理员为您分配归属ID权限。"
+        )
+        return
+
+    # 默认为今日报表
+    period_type = "today"
+    daily_date = get_daily_period_date()
+
+    # 生成报表
+    report_text = await generate_report_text(period_type, daily_date, daily_date, group_id)
+
+    # 构建按钮（简化版，不显示归属查询和查找功能）
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📅 月报", callback_data=f"report_view_month_{group_id}"),
+            InlineKeyboardButton(
+                "📆 日期查询", callback_data=f"report_view_query_{group_id}")
+        ]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(report_text, reply_markup=reply_markup)

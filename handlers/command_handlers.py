@@ -45,6 +45,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "📊 查询:\n"
         "/report [归属ID] - 查看报表\n"
+        "/myreport - 查看我的报表（仅限有权限的归属ID）\n"
         "/search <类型> <值> - 搜索订单\n"
         "  类型: order_id/group_id/customer/state/date\n\n"
         "📢 播报:\n"
@@ -60,6 +61,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/add_employee <ID> - 添加员工\n"
         "/remove_employee <ID> - 移除员工\n"
         "/list_employees - 列出员工\n"
+        "/set_user_group_id <用户ID> <归属ID> - 设置用户归属ID权限\n"
+        "/remove_user_group_id <用户ID> - 移除用户归属ID权限\n"
+        "/list_user_group_mappings - 列出所有用户归属ID映射\n"
         "/update_weekday_groups - 更新星期分组\n"
         "/fix_statistics - 修复统计数据\n"
         "/find_tail_orders - 查找尾数订单\n\n"
@@ -623,5 +627,67 @@ async def list_employees(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = "📋 授权员工列表:\n\n"
     for uid in users:
         message += f"👤 `{uid}`\n"
+
+    await update.message.reply_text(message, parse_mode='Markdown')
+
+
+@admin_required
+@private_chat_only
+async def set_user_group_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """设置用户有权限查看的归属ID（管理员命令）"""
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text("❌ 用法: /set_user_group_id <用户ID> <归属ID>")
+        return
+
+    try:
+        user_id = int(context.args[0])
+        group_id = context.args[1].upper()
+        
+        # 验证归属ID是否存在
+        grouped_data = await db_operations.get_grouped_data(group_id)
+        if not grouped_data:
+            await update.message.reply_text(f"❌ 归属ID {group_id} 不存在")
+            return
+
+        if await db_operations.set_user_group_id(user_id, group_id):
+            await update.message.reply_text(
+                f"✅ 已设置用户 {user_id} 的归属ID权限为 {group_id}"
+            )
+        else:
+            await update.message.reply_text("❌ 设置失败")
+    except ValueError:
+        await update.message.reply_text("❌ 用户ID必须是数字")
+
+
+@admin_required
+@private_chat_only
+async def remove_user_group_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """移除用户的归属ID权限（管理员命令）"""
+    if not context.args:
+        await update.message.reply_text("❌ 用法: /remove_user_group_id <用户ID>")
+        return
+
+    try:
+        user_id = int(context.args[0])
+        if await db_operations.remove_user_group_id(user_id):
+            await update.message.reply_text(f"✅ 已移除用户 {user_id} 的归属ID权限")
+        else:
+            await update.message.reply_text("⚠️ 移除失败或用户不存在")
+    except ValueError:
+        await update.message.reply_text("❌ 用户ID必须是数字")
+
+
+@admin_required
+@private_chat_only
+async def list_user_group_mappings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """列出所有用户归属ID映射（管理员命令）"""
+    mappings = await db_operations.get_all_user_group_mappings()
+    if not mappings:
+        await update.message.reply_text("📋 暂无用户归属ID映射")
+        return
+
+    message = "📋 用户归属ID映射列表:\n\n"
+    for mapping in mappings:
+        message += f"👤 用户ID: `{mapping['user_id']}` → 归属ID: `{mapping['group_id']}`\n"
 
     await update.message.reply_text(message, parse_mode='Markdown')

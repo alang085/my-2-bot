@@ -23,6 +23,9 @@ from handlers import (
     update_weekday_groups,
     fix_statistics,
     find_tail_orders,
+    set_user_group_id,
+    remove_user_group_id,
+    list_user_group_mappings,
     set_normal,
     set_overdue,
     set_end,
@@ -30,6 +33,7 @@ from handlers import (
     set_breach_end,
     handle_amount_operation,
     show_report,
+    show_my_report,
     search_orders,
     handle_new_chat_members,
     handle_new_chat_title,
@@ -169,6 +173,8 @@ def main() -> None:
     application.add_handler(CommandHandler(
         "report", private_chat_only(authorized_required(error_handler(show_report)))))
     application.add_handler(CommandHandler(
+        "myreport", private_chat_only(error_handler(show_my_report))))
+    application.add_handler(CommandHandler(
         "search", private_chat_only(authorized_required(error_handler(search_orders)))))
     application.add_handler(CommandHandler(
         "accounts", private_chat_only(authorized_required(error_handler(show_all_accounts)))))
@@ -218,6 +224,12 @@ def main() -> None:
         "fix_statistics", private_chat_only(admin_required(fix_statistics))))
     application.add_handler(CommandHandler(
         "find_tail_orders", private_chat_only(admin_required(find_tail_orders))))
+    application.add_handler(CommandHandler(
+        "set_user_group_id", private_chat_only(admin_required(set_user_group_id))))
+    application.add_handler(CommandHandler(
+        "remove_user_group_id", private_chat_only(admin_required(remove_user_group_id))))
+    application.add_handler(CommandHandler(
+        "list_user_group_mappings", private_chat_only(admin_required(list_user_group_mappings))))
 
     # 自动订单创建（新成员入群监听 & 群名变更监听）
     application.add_handler(MessageHandler(
