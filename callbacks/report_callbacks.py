@@ -24,12 +24,25 @@ async def _check_expense_permission(user_id: int) -> bool:
 async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理报表相关的回调"""
     query = update.callback_query
+    if not query:
+        logger.error("handle_report_callback: query is None")
+        return
+    
     data = query.data
+    if not data:
+        logger.error("handle_report_callback: data is None")
+        return
+    
+    logger.info(f"handle_report_callback: processing callback data={data}")
 
     # 获取用户ID
     user_id = update.effective_user.id if update.effective_user else None
     if not user_id:
-        await query.answer("❌ 无法获取用户信息", show_alert=True)
+        logger.error("handle_report_callback: user_id is None")
+        try:
+            await query.answer("❌ 无法获取用户信息", show_alert=True)
+        except Exception as e:
+            logger.error(f"handle_report_callback: failed to answer query: {e}")
         return
 
     # 检查用户是否有权限查看特定归属ID的报表
@@ -51,13 +64,22 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             return
 
     if data == "report_record_company":
-        # query.answer() 已在 button_callback 中调用，这里不需要再次调用
+        logger.info(f"handle_report_callback: processing report_record_company for user {user_id}")
         try:
             await query.answer()
-        except Exception:
-            pass  # 忽略重复调用的错误
-        date = get_daily_period_date()
-        records = await db_operations.get_expense_records(date, date, 'company')
+        except Exception as e:
+            logger.warning(f"handle_report_callback: query.answer() failed: {e}")
+        
+        try:
+            date = get_daily_period_date()
+            records = await db_operations.get_expense_records(date, date, 'company')
+        except Exception as e:
+            logger.error(f"handle_report_callback: failed to get expense records: {e}", exc_info=True)
+            try:
+                await query.answer("❌ 获取开销记录失败", show_alert=True)
+            except Exception:
+                pass
+            return
 
         msg = f"🏢 公司开销今日 ({date}):\n\n"
         if not records:
@@ -88,12 +110,18 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         ])
         try:
             await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+            logger.info(f"handle_report_callback: successfully edited message for report_record_company")
         except Exception as e:
             logger.error(f"编辑公司开销消息失败: {e}", exc_info=True)
             try:
                 await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+                logger.info(f"handle_report_callback: successfully sent new message for report_record_company")
             except Exception as e2:
                 logger.error(f"发送公司开销消息失败: {e2}", exc_info=True)
+                try:
+                    await query.answer("❌ 显示开销记录失败", show_alert=True)
+                except Exception:
+                    pass
         return
 
     if data == "report_expense_month_company":
@@ -167,9 +195,22 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if data == "report_record_other":
-        await query.answer()
-        date = get_daily_period_date()
-        records = await db_operations.get_expense_records(date, date, 'other')
+        logger.info(f"handle_report_callback: processing report_record_other for user {user_id}")
+        try:
+            await query.answer()
+        except Exception as e:
+            logger.warning(f"handle_report_callback: query.answer() failed: {e}")
+        
+        try:
+            date = get_daily_period_date()
+            records = await db_operations.get_expense_records(date, date, 'other')
+        except Exception as e:
+            logger.error(f"handle_report_callback: failed to get expense records: {e}", exc_info=True)
+            try:
+                await query.answer("❌ 获取开销记录失败", show_alert=True)
+            except Exception:
+                pass
+            return
 
         msg = f"📝 其他开销今日 ({date}):\n\n"
         if not records:
@@ -200,12 +241,18 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         ])
         try:
             await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+            logger.info(f"handle_report_callback: successfully edited message for report_record_other")
         except Exception as e:
             logger.error(f"编辑其他开销消息失败: {e}", exc_info=True)
             try:
                 await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+                logger.info(f"handle_report_callback: successfully sent new message for report_record_other")
             except Exception as e2:
                 logger.error(f"发送其他开销消息失败: {e2}", exc_info=True)
+                try:
+                    await query.answer("❌ 显示开销记录失败", show_alert=True)
+                except Exception:
+                    pass
         return
 
     if data == "report_expense_month_other":

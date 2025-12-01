@@ -22,7 +22,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("report_"):
         # 报表回调允许受限用户使用，权限检查在 handle_report_callback 内部进行
         # 注意：query.answer() 在 handle_report_callback 内部调用，这里不需要调用
-        await handle_report_callback(update, context)
+        logger.info(f"button_callback: routing report callback {data} to handle_report_callback")
+        try:
+            await handle_report_callback(update, context)
+        except Exception as e:
+            logger.error(f"button_callback: error in handle_report_callback: {e}", exc_info=True)
+            try:
+                await query.answer("❌ 处理回调时出错", show_alert=True)
+            except Exception:
+                pass
         return
 
     # 其他回调需要授权（管理员或员工）
