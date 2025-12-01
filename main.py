@@ -146,6 +146,14 @@ def main() -> None:
         print("Checking database...")
     try:
         init_db.init_database()
+        
+        # 运行数据库迁移（创建缺失的表）
+        try:
+            from migrate_expense_records import migrate_expense_records
+            migrate_expense_records()
+        except Exception as e:
+            logger.warning(f"数据库迁移失败（可能表已存在）: {e}")
+        
         try:
             print("数据库已就绪")
         except UnicodeEncodeError:
