@@ -167,11 +167,9 @@ async def update_order_state_from_title(update: Update, context: ContextTypes.DE
                 return
 
         if is_target_breach_end:
-            # 只能从 breach 转换到 breach_end
-            if not is_current_breach:
-                logger.info(
-                    f"订单 {order_id} 当前状态为 {current_state}，不能直接变更为 breach_end（只能从 breach 转换）")
-                return
+            # 禁止通过群名自动将 breach 变更为 breach_end
+            logger.info(f"订单 {order_id} 禁止通过群名自动变更为 breach_end（只能通过命令手动完成）")
+            return
 
         # 更新数据库状态
         if await db_operations.update_order_state(chat_id, target_state):
@@ -191,15 +189,6 @@ async def update_order_state_from_title(update: Update, context: ContextTypes.DE
                 from utils.stats_helpers import update_liquid_capital
                 await update_liquid_capital(amount)
                 await reply_in_group(update, f"✅ Order Completed: {target_state} (Auto)\nStats moved to Completed.")
-
-            elif is_current_breach and is_target_breach_end:
-                # Breach -> Breach_End (违约完成)
-                await update_all_stats('breach', -amount, -1, group_id)
-                await update_all_stats('breach_end', amount, 1, group_id)
-                # 违约完成订单需要增加流动资金（使用订单金额）
-                from utils.stats_helpers import update_liquid_capital
-                await update_liquid_capital(amount)
-                await reply_in_group(update, f"✅ Breach Completed: {target_state} (Auto)\nStats moved to Breach_End.")
 
             else:
                 # Normal <-> Overdue (都在 Valid 池中，仅状态变更)
