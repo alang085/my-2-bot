@@ -365,6 +365,80 @@ async def update_weekday_groups(update: Update, context: ContextTypes.DEFAULT_TY
 
 @admin_required
 @private_chat_only
+async def fix_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """修复统计数据：根据实际订单数据重新计算所有统计数据（管理员命令）"""
+    try:
+        msg = await update.message.reply_text("🔄 开始修复统计数据...")
+
+        # 直接在这里实现修复逻辑
+        all_orders = await db_operations.search_orders_advanced_all_states({})
+        all_group_ids = list(set(order.get('group_id')
+                             for order in all_orders if order.get('group_id')))
+
+        fixed_count = 0
+        fixed_groups = []
+
+        for group_id in sorted(all_group_ids):
+            group_orders = [o for o in all_orders if o.get(
+                'group_id') == group_id]
+            valid_orders = [o for o in group_orders if o.get('state') in [
+                'normal', 'overdue']]
+
+            actual_valid_count = len(valid_orders)
+            actual_valid_amount = sum(o.get('amount', 0) for o in valid_orders)
+
+            grouped_data = await db_operations.get_grouped_data(group_id)
+
+            valid_count_diff = actual_valid_count - \
+                grouped_data['valid_orders']
+            valid_amount_diff = actual_valid_amount - \
+                grouped_data['valid_amount']
+
+            if abs(valid_count_diff) > 0 or abs(valid_amount_diff) > 0.01:
+                if valid_count_diff != 0:
+                    await db_operations.update_grouped_data(group_id, 'valid_orders', valid_count_diff)
+                if abs(valid_amount_diff) > 0.01:
+                    await db_operations.update_grouped_data(group_id, 'valid_amount', valid_amount_diff)
+                fixed_count += 1
+                fixed_groups.append(
+                    f"{group_id} (订单数: {valid_count_diff}, 金额: {valid_amount_diff:,.2f})")
+
+        # 修复全局统计
+        all_valid_orders = [o for o in all_orders if o.get('state') in [
+            'normal', 'overdue']]
+        global_valid_count = len(all_valid_orders)
+        global_valid_amount = sum(o.get('amount', 0) for o in all_valid_orders)
+
+        financial_data = await db_operations.get_financial_data()
+        global_valid_count_diff = global_valid_count - \
+            financial_data['valid_orders']
+        global_valid_amount_diff = global_valid_amount - \
+            financial_data['valid_amount']
+
+        if abs(global_valid_count_diff) > 0 or abs(global_valid_amount_diff) > 0.01:
+            if global_valid_count_diff != 0:
+                await db_operations.update_financial_data('valid_orders', global_valid_count_diff)
+            if abs(global_valid_amount_diff) > 0.01:
+                await db_operations.update_financial_data('valid_amount', global_valid_amount_diff)
+            fixed_count += 1
+
+        if fixed_count > 0:
+            result_msg = f"✅ 统计数据修复完成！\n\n已修复 {fixed_count} 个归属ID的统计数据。"
+            if fixed_groups:
+                result_msg += f"\n\n修复的归属ID:\n" + \
+                    "\n".join(f"• {g}" for g in fixed_groups)
+        else:
+            result_msg = "✅ 统计数据一致，无需修复。"
+
+        await msg.edit_text(result_msg)
+
+    except Exception as e:
+        logger.error(f"修复统计数据时出错: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ 修复失败: {str(e)}")
+
+
+@admin_required
+@private_chat_only
 async def list_employees(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """列出所有员工"""
     users = await db_operations.get_authorized_users()

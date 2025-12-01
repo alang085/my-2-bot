@@ -13,7 +13,7 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     if not query:
         return
-    
+
     data = query.data
     if not data:
         return

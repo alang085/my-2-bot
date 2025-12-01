@@ -21,6 +21,7 @@ from handlers import (
     remove_employee,
     list_employees,
     update_weekday_groups,
+    fix_statistics,
     set_normal,
     set_overdue,
     set_end,
@@ -212,6 +213,10 @@ def main() -> None:
         "list_employees", private_chat_only(admin_required(list_employees))))
     application.add_handler(CommandHandler(
         "update_weekday_groups", private_chat_only(admin_required(update_weekday_groups))))
+    application.add_handler(CommandHandler(
+        "fix_statistics", private_chat_only(admin_required(fix_statistics))))
+    application.add_handler(CommandHandler(
+        "fix_statistics", private_chat_only(admin_required(fix_statistics))))
 
     # 自动订单创建（新成员入群监听 & 群名变更监听）
     application.add_handler(MessageHandler(

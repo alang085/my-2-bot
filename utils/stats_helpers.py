@@ -21,7 +21,7 @@ async def update_all_stats(field: str, amount: float, count: int = 0, group_id: 
     if count != 0:
         global_count_field = field if field.endswith('_orders') or field in [
             'new_clients', 'old_clients'] else f"{field}_orders"
-        await db_operations.update_financial_data(global_count_field, count)
+        await db_operations.update_financial_data(global_count_field, float(count))
 
     is_daily_field = any(field.startswith(prefix)
                          for prefix in DAILY_ALLOWED_PREFIXES)

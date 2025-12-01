@@ -507,7 +507,7 @@ async def _handle_search_amount_input(update: Update, context: ContextTypes.DEFA
         # 计算每天的目标金额和实际金额
         daily_target = target_amount / 7
         weekday_names = ['一', '二', '三', '四', '五', '六', '日']
-        
+
         # 显示结果
         result_msg = (
             f"💰 按总有效金额查找结果\n\n"
@@ -523,7 +523,8 @@ async def _handle_search_amount_input(update: Update, context: ContextTypes.DEFA
                 stats = weekday_stats[weekday]
                 actual_amount = stats['amount']
                 diff = actual_amount - daily_target
-                diff_pct = (diff / daily_target * 100) if daily_target > 0 else 0
+                diff_pct = (diff / daily_target *
+                            100) if daily_target > 0 else 0
                 diff_sign = "+" if diff >= 0 else ""
                 result_msg += (
                     f"周{weekday}: {stats['count']}个订单, "
