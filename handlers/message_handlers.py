@@ -895,8 +895,15 @@ async def _handle_report_query(update: Update, context: ContextTypes.DEFAULT_TYP
         datetime.strptime(start_date, "%Y-%m-%d")
         datetime.strptime(end_date, "%Y-%m-%d")
 
+        # 检查用户权限限制，如果有权限限制，不显示开销与余额
+        show_expenses = True
+        if user_id:
+            user_group_id = await db_operations.get_user_group_id(user_id)
+            if user_group_id:
+                show_expenses = False
+
         # 生成报表
-        report_text = await generate_report_text("query", start_date, end_date, group_id)
+        report_text = await generate_report_text("query", start_date, end_date, group_id, show_expenses=show_expenses)
 
         # 键盘
         keyboard = [

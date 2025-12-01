@@ -12,7 +12,7 @@ from decorators import error_handler, authorized_required, private_chat_only
 logger = logging.getLogger(__name__)
 
 
-async def generate_report_text(period_type: str, start_date: str, end_date: str, group_id: Optional[str] = None) -> str:
+async def generate_report_text(period_type: str, start_date: str, end_date: str, group_id: Optional[str] = None, show_expenses: bool = True) -> str:
     """生成报表文本"""
     # 获取当前状态数据（资金和有效订单）
     if group_id:
@@ -69,12 +69,18 @@ async def generate_report_text(period_type: str, start_date: str, end_date: str,
         f"违约订单金额: {stats['breach_amount']:.2f}\n"
         f"违约完成订单数: {stats['breach_end_orders']}\n"
         f"违约完成金额: {stats['breach_end_amount']:.2f}\n"
-        f"{'─' * 25}\n"
-        f"💸 【开销与余额】\n"
-        f"公司开销: {stats['company_expenses']:.2f}\n"
-        f"其他开销: {stats['other_expenses']:.2f}\n"
-        f"现金余额: {current_data['liquid_funds']:.2f}\n"
     )
+    
+    # 如果要求显示开销与余额，则添加
+    if show_expenses:
+        report += (
+            f"{'─' * 25}\n"
+            f"💸 【开销与余额】\n"
+            f"公司开销: {stats['company_expenses']:.2f}\n"
+            f"其他开销: {stats['other_expenses']:.2f}\n"
+            f"现金余额: {current_data['liquid_funds']:.2f}\n"
+        )
+    
     return report
 
 
@@ -151,8 +157,8 @@ async def show_my_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     period_type = "today"
     daily_date = get_daily_period_date()
 
-    # 生成报表
-    report_text = await generate_report_text(period_type, daily_date, daily_date, group_id)
+    # 生成报表（不显示开销与余额）
+    report_text = await generate_report_text(period_type, daily_date, daily_date, group_id, show_expenses=False)
 
     # 构建按钮（简化版，不显示归属查询和查找功能）
     keyboard = [
