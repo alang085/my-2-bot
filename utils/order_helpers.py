@@ -26,42 +26,67 @@ def get_state_from_title(title: str) -> str:
 def parse_order_from_title(title: str):
     """从群名解析订单信息"""
     # 规则:
-    # 1. 群名中包含10位连续数字 -> 老客户 (B)
-    # 2. 群名中包含 A + 10位连续数字 -> 新客户 (A)
+    # 1. 群名必须以10个或11个连续数字开始
+    # 2. 10个数字格式: YYMMDDNNKK (YYMMDD=日期, NN=序号, KK=金额千位)
+    #    例如: 2501050105 -> 2015年1月5号, 第1个客户, 金额5000
+    # 3. 11个数字格式: YYMMDDNNKKH (YYMMDD=日期, NN=序号, KK=金额千位, H=金额百位)
+    #    例如: 25010501055 -> 2015年1月5号, 第1个客户, 金额5500
+    # 4. 最后带A表示新客户，否则为老客户
 
     customer = 'B'  # Default
     raw_digits = None
     order_id = None
+    is_11_digits = False
 
-    # Check for New Customer (A + 10 digits, 可以在任何位置)
-    # 匹配 A 后面紧跟10位数字的模式
-    match_new = re.search(r'A(\d{10})', title)
-    if match_new:
-        customer = 'A'
-        raw_digits = match_new.group(1)
-        order_id = match_new.group(0)  # A + digits as ID
-    else:
-        # Check for Old Customer (10 consecutive digits, 可以在任何位置)
-        # 匹配10位连续数字，但确保不是A后面的（避免重复匹配）
-        # 使用负向前瞻确保前面不是A
-        match_old = re.search(r'(?<!A)(\d{10})(?!\d)', title)
-        if match_old:
-            customer = 'B'
-            raw_digits = match_old.group(1)
-            order_id = match_old.group(1)  # 只有10位数字作为ID
+    # 匹配群名开头的10个或11个连续数字，后面可能跟A
+    # 群名必须以10或11个数字开始，后面只能跟A或没有其他内容
+    # 优先匹配11位数字（更具体）
+    match_11 = re.match(r'^(\d{11})(A)?', title)
+    if match_11:
+        # 确保不是12位数字的前11位
+        if len(title) > 11 and title[11].isdigit():
+            # 是12位数字，不匹配
+            match_11 = None
+        elif len(title) > 11 and title[11] != 'A':
+            # 11位数字后跟非A字符，不匹配
+            match_11 = None
+        else:
+            raw_digits = match_11.group(1)
+            is_11_digits = True
+            if match_11.group(2) == 'A':
+                customer = 'A'
+                order_id = match_11.group(1) + 'A'  # 11位数字 + A
+            else:
+                customer = 'B'
+                order_id = raw_digits  # 只有11位数字
+    
+    if not match_11:
+        # 匹配10位数字，确保后面不是第11位数字
+        match_10 = re.match(r'^(\d{10})(A)?', title)
+        if match_10:
+            # 确保不是11位数字的前10位
+            if len(title) > 10 and title[10].isdigit():
+                # 是11位数字，不匹配（应该匹配11位）
+                match_10 = None
+            elif len(title) > 10 and title[10] != 'A':
+                # 10位数字后跟非A字符，不匹配
+                match_10 = None
+            else:
+                raw_digits = match_10.group(1)
+                is_11_digits = False
+                if match_10.group(2) == 'A':
+                    customer = 'A'
+                    order_id = match_10.group(1) + 'A'  # 10位数字 + A
+                else:
+                    customer = 'B'
+                    order_id = raw_digits  # 只有10位数字
 
     if not raw_digits:
         return None
 
-    # Parse Date and Amount from the 10 digits
-    # Digits: YYMMDDNNKK
-    # YYMMDD: Date
-    # NN: Seq
-    # KK: Amount (k)
-
+    # 解析日期部分 (前6位: YYMMDD)
     date_part = raw_digits[:6]
-    amount_part = raw_digits[8:10]
-
+    
     try:
         # 假设 20YY
         full_date_str = f"20{date_part}"
@@ -69,7 +94,19 @@ def parse_order_from_title(title: str):
     except ValueError:
         return None
 
-    amount = int(amount_part) * 1000
+    # 解析金额部分
+    if is_11_digits:
+        # 11位数字: YYMMDDNNKKH
+        # KK = 第9-10位 (千位)
+        # H = 第11位 (百位)
+        amount_thousands = int(raw_digits[8:10])  # KK
+        amount_hundreds = int(raw_digits[10])     # H
+        amount = amount_thousands * 1000 + amount_hundreds * 100
+    else:
+        # 10位数字: YYMMDDNNKK
+        # KK = 第9-10位 (千位)
+        amount_part = raw_digits[8:10]
+        amount = int(amount_part) * 1000
 
     return {
         'date': order_date_obj,
@@ -149,13 +186,19 @@ async def try_create_order_from_title(update: Update, context: ContextTypes.DEFA
             await update.message.reply_text(
                 "❌ Invalid Group Title Format.\n"
                 "Expected:\n"
-                "1. Old Customer: 10 digits (e.g., 2401150105)\n"
-                "2. New Customer: A + 10 digits (e.g., A2401150105)\n\n"
+                "1. Old Customer: 10 digits (e.g., 2501050105)\n"
+                "   或 11 digits (e.g., 25010501055)\n"
+                "2. New Customer: 10 digits + A (e.g., 2501050105A)\n"
+                "   或 11 digits + A (e.g., 25010501055A)\n\n"
+                "格式说明:\n"
+                "- 10位: YYMMDDNNKK (日期+序号+金额千位)\n"
+                "- 11位: YYMMDDNNKKH (日期+序号+金额千位+金额百位)\n"
+                "- 群名必须以10或11个连续数字开始\n\n"
                 f"Current title: {title}"
             )
         else:
             logger.info(
-                f"Group title '{title}' does not match order pattern (no 10 digits or A+10 digits found).")
+                f"Group title '{title}' does not match order pattern (must start with 10 or 11 digits).")
         return
 
     logger.info(
