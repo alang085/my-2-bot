@@ -136,6 +136,14 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
 
     # 处理其他操作
     action = data.replace("order_action_", "")
+    is_group = is_group_chat(update)
+
+    # 在群聊中，删除订单状态消息，只保留执行结果
+    if is_group and action in ["normal", "overdue", "end", "breach", "breach_end"]:
+        try:
+            await query.delete_message()
+        except:
+            pass
 
     if action == "normal":
         await set_normal(update, context)

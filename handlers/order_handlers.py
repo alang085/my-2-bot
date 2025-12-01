@@ -236,10 +236,13 @@ async def set_breach_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     if is_group_chat(update):
-        await reply_func(
+        prompt_msg = await reply_func(
             "Please enter the final amount for this breach order (e.g., 5000).\n"
             "This amount will be recorded as liquid capital inflow."
         )
+        # 保存提示消息的ID，以便后续删除
+        if prompt_msg:
+            context.user_data['breach_end_prompt_msg_id'] = prompt_msg.message_id
     else:
         await reply_func("Please enter the final amount for breach order:")
 
