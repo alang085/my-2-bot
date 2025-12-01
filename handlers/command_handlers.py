@@ -642,7 +642,7 @@ async def set_user_group_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = int(context.args[0])
         group_id = context.args[1].upper()
-        
+
         # 验证归属ID是否存在
         grouped_data = await db_operations.get_grouped_data(group_id)
         if not grouped_data:

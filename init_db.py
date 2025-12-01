@@ -104,7 +104,7 @@ def init_database():
         UNIQUE(date, group_id)
     )
     ''')
-    
+
     # 检查表是否存在，如果存在需要检查列是否存在并添加缺失的列
     cursor.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='daily_data'")
@@ -124,7 +124,7 @@ def init_database():
                 print("已添加列: liquid_flow")
             except sqlite3.OperationalError as e:
                 print(f"添加列 liquid_flow 时出错（可能已存在）: {e}")
-        
+
         if 'company_expenses' not in columns:
             try:
                 cursor.execute(
@@ -133,7 +133,7 @@ def init_database():
                 print("已添加列: company_expenses")
             except sqlite3.OperationalError as e:
                 print(f"添加列 company_expenses 时出错（可能已存在）: {e}")
-        
+
         if 'other_expenses' not in columns:
             try:
                 cursor.execute(

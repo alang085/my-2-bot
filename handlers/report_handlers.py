@@ -113,7 +113,7 @@ async def show_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📆 日期查询", callback_data=f"report_view_query_{group_id if group_id else 'ALL'}")
         ]
     ]
-    
+
     # 检查用户权限：只有管理员或授权员工可以录入开销
     user_id = update.effective_user.id if update.effective_user else None
     if user_id:
@@ -177,7 +177,7 @@ async def show_my_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📆 日期查询", callback_data=f"report_view_query_{group_id}")
         ]
     ]
-    
+
     # 检查用户权限：只有管理员或授权员工可以录入开销
     user_id = update.effective_user.id if update.effective_user else None
     if user_id:

@@ -315,16 +315,16 @@ async def _handle_expense_input(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("❌ 无法获取用户信息")
         context.user_data['state'] = None
         return
-    
+
     from config import ADMIN_IDS
     is_admin = user_id in ADMIN_IDS
     is_authorized = await db_operations.is_user_authorized(user_id)
-    
+
     if not is_admin and not is_authorized:
         await update.message.reply_text("❌ 您没有权限录入开销（仅限员工和管理员）")
         context.user_data['state'] = None
         return
-    
+
     try:
         # 格式: 金额 备注
         parts = text.strip().split(maxsplit=1)
@@ -925,9 +925,13 @@ async def _handle_report_query(update: Update, context: ContextTypes.DEFAULT_TYP
         keyboard = [
             [
                 InlineKeyboardButton(
-                    "📄 Today Report", callback_data=f"report_view_today_{group_id if group_id else 'ALL'}"),
+                    "📄 今日报表", callback_data=f"report_view_today_{group_id if group_id else 'ALL'}"),
                 InlineKeyboardButton(
-                    "📅 Month Report", callback_data=f"report_view_month_{group_id if group_id else 'ALL'}")
+                    "📅 月报", callback_data=f"report_view_month_{group_id if group_id else 'ALL'}")
+            ],
+            [
+                InlineKeyboardButton(
+                    "📆 日期查询", callback_data=f"report_view_query_{group_id if group_id else 'ALL'}")
             ]
         ]
 

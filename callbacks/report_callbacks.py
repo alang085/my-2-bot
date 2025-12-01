@@ -48,6 +48,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             return
 
     if data == "report_record_company":
+        await query.answer()
         date = get_daily_period_date()
         records = await db_operations.get_expense_records(date, date, 'company')
 
@@ -61,9 +62,14 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
                 total += r['amount']
             msg += f"\n总计: {total:.2f}\n"
 
-        keyboard = [
-            [InlineKeyboardButton(
-                "➕ 添加开销", callback_data="report_add_expense_company")],
+        keyboard = []
+
+        # 只有有权限的用户才显示添加开销按钮
+        if await _check_expense_permission(user_id):
+            keyboard.append([InlineKeyboardButton(
+                "➕ 添加开销", callback_data="report_add_expense_company")])
+
+        keyboard.extend([
             [
                 InlineKeyboardButton(
                     "📅 本月", callback_data="report_expense_month_company"),
@@ -72,11 +78,12 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             ],
             [InlineKeyboardButton(
                 "🔙 返回", callback_data="report_view_today_ALL")]
-        ]
+        ])
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data == "report_expense_month_company":
+        await query.answer()
         tz = pytz.timezone('Asia/Shanghai')
         now = datetime.now(tz)
         start_date = now.replace(day=1).strftime("%Y-%m-%d")
@@ -109,6 +116,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if data == "report_expense_query_company":
+        await query.answer()
         await query.message.reply_text(
             "🏢 请输入日期范围：\n"
             "格式1 (单日): 2024-01-01\n"
@@ -119,16 +127,16 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if data == "report_add_expense_company":
+        await query.answer()
         # 检查权限：只有管理员或授权员工可以录入开销
-        user_id = update.effective_user.id if update.effective_user else None
         if not user_id:
             await query.answer("❌ 无法获取用户信息", show_alert=True)
             return
-        
+
         if not await _check_expense_permission(user_id):
             await query.answer("❌ 您没有权限录入开销（仅限员工和管理员）", show_alert=True)
             return
-        
+
         await query.message.reply_text(
             "🏢 请输入金额和备注：\n"
             "格式: 金额 备注\n"
@@ -138,6 +146,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if data == "report_record_other":
+        await query.answer()
         date = get_daily_period_date()
         records = await db_operations.get_expense_records(date, date, 'other')
 
@@ -152,12 +161,12 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             msg += f"\n总计: {total:.2f}\n"
 
         keyboard = []
-        
+
         # 只有有权限的用户才显示添加开销按钮
         if await _check_expense_permission(user_id):
             keyboard.append([InlineKeyboardButton(
                 "➕ 添加开销", callback_data="report_add_expense_other")])
-        
+
         keyboard.extend([
             [
                 InlineKeyboardButton(
@@ -172,6 +181,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if data == "report_expense_month_other":
+        await query.answer()
         tz = pytz.timezone('Asia/Shanghai')
         now = datetime.now(tz)
         start_date = now.replace(day=1).strftime("%Y-%m-%d")
@@ -201,6 +211,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if data == "report_expense_query_other":
+        await query.answer()
         await query.message.reply_text(
             "📝 请输入日期范围：\n"
             "格式1 (单日): 2024-01-01\n"
@@ -211,16 +222,16 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if data == "report_add_expense_other":
+        await query.answer()
         # 检查权限：只有管理员或授权员工可以录入开销
-        user_id = update.effective_user.id if update.effective_user else None
         if not user_id:
             await query.answer("❌ 无法获取用户信息", show_alert=True)
             return
-        
+
         if not await _check_expense_permission(user_id):
             await query.answer("❌ 您没有权限录入开销（仅限员工和管理员）", show_alert=True)
             return
-        
+
         await query.message.reply_text(
             "📝 请输入金额和备注：\n"
             "格式: 金额 备注\n"
@@ -374,7 +385,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
                     "📆 日期查询", callback_data=f"report_view_query_{group_id if group_id else 'ALL'}")
             ]
         ]
-        
+
         # 只有有权限的用户才显示开销按钮
         if await _check_expense_permission(user_id):
             keyboard.append([
@@ -422,7 +433,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
                     "📆 日期查询", callback_data=f"report_view_query_{group_id if group_id else 'ALL'}")
             ]
         ]
-        
+
         # 只有有权限的用户才显示开销按钮
         if await _check_expense_permission(user_id):
             keyboard.append([
