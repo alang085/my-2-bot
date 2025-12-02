@@ -980,7 +980,8 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
                 start_date = end_date = get_daily_period_date()
 
         # 处理 income_type：确保正确处理 None 和空字符串
-        query_type = None if (income_type == 'None' or income_type == '' or income_type is None) else income_type
+        query_type = None if (income_type == 'None' or income_type ==
+                              '' or income_type is None) else income_type
         callback_type = 'None' if query_type is None else income_type  # 用于回调数据，保持一致性
 
         # 获取记录

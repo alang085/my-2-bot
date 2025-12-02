@@ -8,6 +8,7 @@ import db_operations
 from constants import HISTORICAL_THRESHOLD_DATE, WEEKDAY_GROUP
 from utils.stats_helpers import update_all_stats, update_liquid_capital
 from utils.chat_helpers import is_group_chat, get_current_group, get_weekday_group_from_date, reply_in_group
+from utils.date_helpers import get_daily_period_date
 from utils.message_builders import build_order_creation_message
 
 logger = logging.getLogger(__name__)
@@ -194,6 +195,52 @@ async def update_order_state_from_title(update: Update, context: ContextTypes.DE
                 # Normal <-> Overdue (都在 Valid 池中，仅状态变更)
                 await reply_in_group(update, f"🔄 State Changed: {target_state} (Auto)")
 
+            # 记录操作历史（用于撤销）
+            # 获取触发操作的用户ID（修改群名的员工）
+            # 如果获取不到，使用 0 表示系统自动操作
+            user_id = update.effective_user.id if update.effective_user else 0
+
+            try:
+                # 根据状态变更类型确定操作类型
+                operation_type = None
+                operation_data = {
+                    'chat_id': chat_id,
+                    'order_id': order_id,
+                    'old_state': current_state,
+                    'new_state': target_state,
+                    'group_id': group_id,
+                    'amount': amount,
+                    'trigger': 'auto_from_title'  # 标记为自动触发
+                }
+
+                if target_state == 'end':
+                    # 完成订单
+                    operation_type = 'order_completed'
+                    operation_data['date'] = get_daily_period_date()
+                elif target_state == 'breach_end':
+                    # 违约完成（虽然正常情况下不应该通过群名触发，但保留逻辑）
+                    operation_type = 'order_breach_end'
+                    operation_data['date'] = get_daily_period_date()
+                    operation_data['amount'] = amount  # 违约完成金额
+                else:
+                    # 普通状态变更（normal/overdue/breach）
+                    operation_type = 'order_state_change'
+
+                # 记录操作历史
+                await db_operations.record_operation(
+                    user_id=user_id,
+                    operation_type=operation_type,
+                    operation_data=operation_data,
+                    chat_id=chat_id
+                )
+
+                logger.info(
+                    f"已记录自动状态变更操作历史: order_id={order_id}, {current_state} -> {target_state}, user_id={user_id}")
+
+            except Exception as e:
+                # 记录操作历史失败不影响主流程，只记录日志
+                logger.error(f"记录自动状态变更操作历史失败: {e}", exc_info=True)
+
     except Exception as e:
         logger.error(f"Auto update state failed: {e}", exc_info=True)
 
@@ -336,7 +383,7 @@ async def try_create_order_from_title(update: Update, context: ContextTypes.DEFA
         is_historical=is_historical
     )
     await update.message.reply_text(msg)
-    
+
     # 记录操作历史（用于撤销）
     user_id = update.effective_user.id if update.effective_user else None
     if user_id:

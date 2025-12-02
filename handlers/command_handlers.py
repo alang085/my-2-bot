@@ -120,6 +120,11 @@ async def show_current_order(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await reply_func("❌ No active order in this group.\nUse /create to start a new order.")
         return
 
+    # 查询该订单的利息总额
+    interest_info = await db_operations.get_interest_by_order_id(order['order_id'])
+    interest_total = interest_info.get('total_amount', 0.0) or 0.0
+    interest_count = interest_info.get('count', 0) or 0
+
     # 构建订单信息
     msg = (
         f"📋 Current Order Status:\n"
@@ -131,8 +136,23 @@ async def show_current_order(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"👤 Customer: {order['customer']}\n"
         f"💰 Amount: {order['amount']:.2f}\n"
         f"📊 State: {order['state']}\n"
-        f"──────────────────"
     )
+
+    # 添加利息信息
+    if interest_count > 0:
+        msg += (
+            f"──────────────────\n"
+            f"💵 Interest Collected:\n"
+            f"   Total: {interest_total:,.2f}\n"
+            f"   Times: {interest_count}\n"
+        )
+    else:
+        msg += (
+            f"──────────────────\n"
+            f"💵 Interest Collected: 0.00\n"
+        )
+
+    msg += "──────────────────"
 
     # 构建操作按钮（群聊使用英文）
     keyboard = [
@@ -703,52 +723,103 @@ async def list_user_group_mappings(update: Update, context: ContextTypes.DEFAULT
 @error_handler
 async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """检查收入明细和统计数据的不一致问题（管理员命令）"""
-    import asyncio
-    import subprocess
-    import sys
-    from pathlib import Path
+    from datetime import datetime
+    from utils.date_helpers import get_daily_period_date
+    import db_operations
 
     # 获取日期参数（可选）
     date = None
     if context.args and len(context.args) > 0:
         date = context.args[0]
+    else:
+        date = get_daily_period_date()
 
     # 发送开始消息
     msg = await update.message.reply_text("🔍 正在检查数据不一致问题，请稍候...")
 
     try:
-        # 获取项目根目录
-        project_root = Path(__file__).parent.parent.absolute()
-        script_path = project_root / "check_income_statistics_mismatch.py"
+        # 获取收入明细统计
+        income_records = await db_operations.get_income_records(date, date)
+        
+        # 计算收入明细汇总
+        income_summary = {
+            'interest': 0.0,
+            'completed_amount': 0.0,
+            'breach_end_amount': 0.0,
+            'principal_reduction': 0.0,
+            'adjustment': 0.0
+        }
+        
+        for record in income_records:
+            record_type = record.get('type', '')
+            amount = record.get('amount', 0.0) or 0.0
+            if record_type == 'interest':
+                income_summary['interest'] += amount
+            elif record_type == 'completed':
+                income_summary['completed_amount'] += amount
+            elif record_type == 'breach_end':
+                income_summary['breach_end_amount'] += amount
+            elif record_type == 'principal_reduction':
+                income_summary['principal_reduction'] += amount
+            elif record_type == 'adjustment':
+                income_summary['adjustment'] += amount
 
-        # 检查脚本是否存在
-        if not script_path.exists():
-            await msg.edit_text("❌ 错误: 找不到诊断脚本 check_income_statistics_mismatch.py")
-            return
-
-        # 构建命令
-        cmd = [sys.executable, str(script_path)]
-        if date:
-            cmd.append(date)
-
-        # 运行脚本（捕获输出）
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(project_root)
-        )
-
-        stdout, stderr = await process.communicate()
-
-        # 解码输出
-        output = stdout.decode('utf-8', errors='replace') if stdout else ""
-        error_output = stderr.decode(
-            'utf-8', errors='replace') if stderr else ""
-
-        if error_output:
-            logger.error(f"诊断脚本错误输出: {error_output}")
-
+        # 获取统计数据
+        stats = await db_operations.get_stats_by_date_range(date, date, None)
+        
+        # 比较数据
+        output_lines = []
+        output_lines.append(f"📊 数据一致性检查报告")
+        output_lines.append(f"📅 检查日期: {date}")
+        output_lines.append("=" * 40)
+        output_lines.append("")
+        
+        mismatches = []
+        
+        # 检查利息收入
+        interest_diff = abs(stats.get('interest', 0.0) - income_summary['interest'])
+        if interest_diff > 0.01:  # 允许0.01的浮点误差
+            mismatches.append("利息收入")
+            output_lines.append(f"⚠️ 不一致! 利息收入:")
+            output_lines.append(f"  统计表: {stats.get('interest', 0.0):.2f}")
+            output_lines.append(f"  明细表: {income_summary['interest']:.2f}")
+            output_lines.append(f"  差异: {interest_diff:.2f}")
+            output_lines.append("")
+        
+        # 检查完成订单金额
+        completed_diff = abs(stats.get('completed_amount', 0.0) - income_summary['completed_amount'])
+        if completed_diff > 0.01:
+            mismatches.append("完成订单金额")
+            output_lines.append(f"⚠️ 不一致! 完成订单金额:")
+            output_lines.append(f"  统计表: {stats.get('completed_amount', 0.0):.2f}")
+            output_lines.append(f"  明细表: {income_summary['completed_amount']:.2f}")
+            output_lines.append(f"  差异: {completed_diff:.2f}")
+            output_lines.append("")
+        
+        # 检查违约完成金额
+        breach_end_diff = abs(stats.get('breach_end_amount', 0.0) - income_summary['breach_end_amount'])
+        if breach_end_diff > 0.01:
+            mismatches.append("违约完成金额")
+            output_lines.append(f"⚠️ 不一致! 违约完成金额:")
+            output_lines.append(f"  统计表: {stats.get('breach_end_amount', 0.0):.2f}")
+            output_lines.append(f"  明细表: {income_summary['breach_end_amount']:.2f}")
+            output_lines.append(f"  差异: {breach_end_diff:.2f}")
+            output_lines.append("")
+        
+        if not mismatches:
+            output_lines.append("✅ 数据一致！所有统计数据与收入明细匹配。")
+        else:
+            output_lines.append("")
+            output_lines.append(f"❌ 发现 {len(mismatches)} 项不一致:")
+            for item in mismatches:
+                output_lines.append(f"  - {item}")
+        
+        output_lines.append("")
+        output_lines.append("💡 提示：要查看统计收入的来源明细，请使用：")
+        output_lines.append("  /report → 点击「💰 收入明细」按钮")
+        
+        output = "\n".join(output_lines)
+        
         # 处理输出（Telegram消息有长度限制4096字符）
         if len(output) > 4096:
             # 分段发送
@@ -775,36 +846,105 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode='Markdown'
                     )
 
-            # 发送总结
-            # 提取关键信息
-            summary = "📊 诊断完成（结果较长，已分段发送）\n\n"
-
-            # 查找关键不一致信息
-            if "⚠️ 不一致!" in output:
-                summary += "⚠️ 发现数据不一致问题！\n\n"
-                # 提取差异信息
-                lines = output.split('\n')
-                for i, line in enumerate(lines):
-                    if "⚠️ 不一致!" in line:
-                        # 尝试获取上下文
-                        if i > 0:
-                            summary += f"{lines[i-1]}\n"
-                        summary += f"{line}\n\n"
-            
-            # 添加说明：如何查看详细明细
-            summary += "\n💡 提示：要查看统计收入的来源明细（时间、订单号、金额），请使用：\n"
-            summary += f"  /收入明细 或点击报表中的「💰 收入明细」按钮\n"
-            summary += f"  或使用高级查询：分类查询 → 高级查询 → 选择日期和类型"
-
-            if summary != "📊 诊断完成（结果较长，已分段发送）\n\n":
-                await update.message.reply_text(summary)
         else:
             # 输出不太长，直接发送
             if output:
                 await msg.edit_text(f"```\n{output}\n```", parse_mode='Markdown')
             else:
-                await msg.edit_text("❌ 脚本执行完成，但没有输出")
+                await msg.edit_text("❌ 检查完成，但没有数据")
 
     except Exception as e:
-        logger.error(f"执行诊断脚本时出错: {e}", exc_info=True)
-        await msg.edit_text(f"❌ 执行失败: {str(e)}")
+        logger.error(f"检查数据不一致时出错: {e}", exc_info=True)
+        await msg.edit_text(f"❌ 检查失败: {str(e)}")
+
+
+@admin_required
+@private_chat_only
+@error_handler
+async def customer_contribution(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """查询客户总贡献（跨所有订单周期）（管理员命令）"""
+    if not context.args or len(context.args) == 0:
+        await update.message.reply_text(
+            "❌ 请指定客户类型\n\n"
+            "用法: /customer <客户类型> [起始日期] [结束日期]\n\n"
+            "客户类型: A (新客户) 或 B (老客户)\n"
+            "日期格式: YYYY-MM-DD (可选，默认查询全部)\n\n"
+            "示例:\n"
+            "/customer A\n"
+            "/customer B 2025-01-01 2025-12-31"
+        )
+        return
+
+    customer = context.args[0].upper()
+    if customer not in ['A', 'B']:
+        await update.message.reply_text("❌ 客户类型必须是 A (新客户) 或 B (老客户)")
+        return
+
+    start_date = context.args[1] if len(context.args) > 1 else None
+    end_date = context.args[2] if len(context.args) > 2 else None
+
+    try:
+        msg = await update.message.reply_text("🔍 正在查询客户总贡献，请稍候...")
+
+        # 查询总贡献
+        total_contribution = await db_operations.get_customer_total_contribution(
+            customer, start_date, end_date
+        )
+
+        # 查询所有订单详情
+        orders_summary = await db_operations.get_customer_orders_summary(
+            customer, start_date, end_date
+        )
+
+        # 构建报告
+        customer_name = "新客户" if customer == 'A' else "老客户"
+        date_range = ""
+        if start_date or end_date:
+            date_range = f"\n📅 查询日期范围: {start_date or '最早'} 至 {end_date or '最新'}"
+
+        report = (
+            f"📊 {customer_name} (客户类型: {customer}) 总贡献报告{date_range}\n"
+            f"{'=' * 60}\n\n"
+            f"💰 总贡献汇总:\n"
+            f"  总贡献金额: {total_contribution['total_amount']:,.2f}\n"
+            f"  其中:\n"
+            f"    - 利息收入: {total_contribution['total_interest']:,.2f} ({total_contribution['interest_count']} 次)\n"
+            f"    - 完成订单: {total_contribution['total_completed']:,.2f}\n"
+            f"    - 违约完成: {total_contribution['total_breach_end']:,.2f}\n"
+            f"    - 本金减少: {total_contribution['total_principal_reduction']:,.2f}\n\n"
+            f"📋 订单统计:\n"
+            f"  订单数量: {total_contribution['order_count']} 个\n"
+        )
+
+        if total_contribution['first_order_date']:
+            report += (
+                f"  首次订单: {total_contribution['first_order_date']}\n"
+                f"  最后订单: {total_contribution['last_order_date']}\n"
+            )
+
+        # 显示订单明细（前10个）
+        if orders_summary:
+            report += f"\n📝 订单明细 (显示前 {min(10, len(orders_summary))} 个):\n"
+            report += f"{'-' * 60}\n"
+
+            for i, order_info in enumerate(orders_summary[:10], 1):
+                order = order_info['order']
+                report += (
+                    f"\n{i}. 订单: {order['order_id']}\n"
+                    f"   日期: {order['date']}\n"
+                    f"   状态: {order['state']}\n"
+                    f"   金额: {order['amount']:,.2f}\n"
+                    f"   贡献: {order_info['total_contribution']:,.2f}\n"
+                    f"      - 利息: {order_info['interest']:,.2f}\n"
+                    f"      - 完成: {order_info['completed']:,.2f}\n"
+                    f"      - 违约完成: {order_info['breach_end']:,.2f}\n"
+                )
+
+            if len(orders_summary) > 10:
+                report += f"\n... 还有 {len(orders_summary) - 10} 个订单\n"
+
+        await msg.edit_text(report)
+
+    except Exception as e:
+        logger.error(f"查询客户总贡献时出错: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ 查询失败: {str(e)}")

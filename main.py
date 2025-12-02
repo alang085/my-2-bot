@@ -15,7 +15,6 @@ from handlers import (
     show_current_order,
     adjust_funds,
     create_attribution,
-
     list_attributions,
     add_employee,
     remove_employee,
@@ -27,6 +26,7 @@ from handlers import (
     remove_user_group_id,
     list_user_group_mappings,
     check_mismatch,
+    customer_contribution,
     set_normal,
     set_overdue,
     set_end,
@@ -70,8 +70,10 @@ if os.getenv('DEBUG', '0') == '1':
     try:
         print(f"[DEBUG] Project root: {project_root_str}")
         print(f"[DEBUG] Current working directory: {os.getcwd()}")
-        print(f"[DEBUG] Python path includes project root: {project_root_str in sys.path}")
-        print(f"[DEBUG] Handlers directory exists: {Path(project_root / 'handlers' / '__init__.py').exists()}")
+        print(
+            f"[DEBUG] Python path includes project root: {project_root_str in sys.path}")
+        print(
+            f"[DEBUG] Handlers directory exists: {Path(project_root / 'handlers' / '__init__.py').exists()}")
     except Exception as e:
         print(f"[DEBUG] Error in debug output: {e}")
 
@@ -147,20 +149,6 @@ def main() -> None:
         print("Checking database...")
     try:
         init_db.init_database()
-
-        # 运行数据库迁移（创建缺失的表和字段）
-        try:
-            from migrate_expense_records import migrate_expense_records
-            migrate_expense_records()
-        except Exception as e:
-            logger.warning(f"数据库迁移失败（可能表已存在）: {e}")
-        
-        # 迁移 operation_history 表添加 chat_id 字段
-        try:
-            from migrate_add_chat_id_to_operation_history import migrate_add_chat_id
-            migrate_add_chat_id()
-        except Exception as e:
-            logger.warning(f"数据库迁移失败（chat_id字段可能已存在）: {e}")
 
         try:
             print("数据库已就绪")
@@ -252,6 +240,8 @@ def main() -> None:
         "list_user_group_mappings", private_chat_only(admin_required(list_user_group_mappings))))
     application.add_handler(CommandHandler(
         "check_mismatch", private_chat_only(admin_required(check_mismatch))))
+    application.add_handler(CommandHandler(
+        "customer", private_chat_only(admin_required(customer_contribution))))
 
     # 自动订单创建（新成员入群监听 & 群名变更监听）
     application.add_handler(MessageHandler(

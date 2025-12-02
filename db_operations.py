@@ -967,7 +967,7 @@ def record_income(conn, cursor, date: str, type: str, amount: float,
     # 使用北京时间作为 created_at
     tz_beijing = pytz.timezone('Asia/Shanghai')
     created_at = datetime.now(tz_beijing).strftime('%Y-%m-%d %H:%M:%S')
-    
+
     cursor.execute('''
     INSERT INTO income_records (
         date, type, amount, group_id, order_id, order_date,
@@ -980,7 +980,7 @@ def record_income(conn, cursor, date: str, type: str, amount: float,
 @db_query
 def get_income_records(conn, cursor, start_date: str, end_date: str = None,
                        type: Optional[str] = None, customer: Optional[str] = None,
-                       group_id: Optional[str] = None) -> List[Dict]:
+                       group_id: Optional[str] = None, order_id: Optional[str] = None) -> List[Dict]:
     """获取收入明细（支持多维度过滤）"""
     query = "SELECT * FROM income_records WHERE date >= ?"
     params = [start_date]
@@ -1004,6 +1004,10 @@ def get_income_records(conn, cursor, start_date: str, end_date: str = None,
         query += " AND group_id = ?"
         params.append(group_id)
 
+    if order_id:
+        query += " AND order_id = ?"
+        params.append(order_id)
+
     query += " ORDER BY date DESC, created_at DESC"
 
     cursor.execute(query, params)
@@ -1012,8 +1016,242 @@ def get_income_records(conn, cursor, start_date: str, end_date: str = None,
 
 
 @db_query
+def get_interest_by_order_id(conn, cursor, order_id: str) -> Dict:
+    """获取指定订单的所有利息收入汇总"""
+    cursor.execute('''
+    SELECT 
+        COUNT(*) as count,
+        SUM(amount) as total_amount,
+        MIN(date) as first_date,
+        MAX(date) as last_date
+    FROM income_records 
+    WHERE order_id = ? AND type = 'interest'
+    ''', (order_id,))
+
+    row = cursor.fetchone()
+    if row and row[0] > 0:
+        return {
+            'count': row[0],
+            'total_amount': row[1] or 0.0,
+            'first_date': row[2],
+            'last_date': row[3]
+        }
+    return {
+        'count': 0,
+        'total_amount': 0.0,
+        'first_date': None,
+        'last_date': None
+    }
+
+
+@db_query
+def get_all_interest_by_order_id(conn, cursor, order_id: str) -> List[Dict]:
+    """获取指定订单的所有利息收入明细"""
+    cursor.execute('''
+    SELECT * FROM income_records 
+    WHERE order_id = ? AND type = 'interest'
+    ORDER BY date ASC, created_at ASC
+    ''', (order_id,))
+
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+@db_query
+def get_customer_total_contribution(conn, cursor, customer: str, start_date: str = None, end_date: str = None) -> Dict:
+    """获取指定客户的总贡献（跨所有订单周期）
+
+    参数:
+        customer: 客户类型（'A'=新客户，'B'=老客户）
+        start_date: 起始日期（可选，如果提供则只统计该日期之后的数据）
+        end_date: 结束日期（可选，如果提供则只统计该日期之前的数据）
+
+    返回:
+        {
+            'total_interest': 总利息收入,
+            'total_completed': 总完成订单金额,
+            'total_breach_end': 总违约完成金额,
+            'total_principal_reduction': 总本金减少,
+            'total_amount': 总贡献金额,
+            'order_count': 订单数量,
+            'interest_count': 利息收取次数,
+            'first_order_date': 首次订单日期,
+            'last_order_date': 最后订单日期
+        }
+    """
+    # 构建基础查询条件
+    income_conditions = ["customer = ?"]
+    income_params = [customer.upper()]
+
+    order_conditions = ["customer = ?"]
+    order_params = [customer.upper()]
+
+    if start_date:
+        income_conditions.append("date >= ?")
+        income_params.append(start_date)
+        order_conditions.append("date >= ?")
+        order_params.append(start_date)
+
+    if end_date:
+        income_conditions.append("date <= ?")
+        income_params.append(end_date)
+        order_conditions.append("date <= ?")
+        order_params.append(end_date)
+
+    income_where = " AND ".join(income_conditions)
+    order_where = " AND ".join(order_conditions)
+
+    # 查询收入汇总
+    cursor.execute(f'''
+    SELECT 
+        type,
+        COUNT(*) as count,
+        SUM(amount) as total_amount
+    FROM income_records 
+    WHERE {income_where}
+    GROUP BY type
+    ''', income_params)
+
+    income_rows = cursor.fetchall()
+
+    # 初始化结果
+    result = {
+        'total_interest': 0.0,
+        'total_completed': 0.0,
+        'total_breach_end': 0.0,
+        'total_principal_reduction': 0.0,
+        'total_amount': 0.0,
+        'interest_count': 0,
+        'order_count': 0,
+        'first_order_date': None,
+        'last_order_date': None
+    }
+
+    # 处理收入数据
+    for row in income_rows:
+        income_type = row[0]
+        count = row[1]
+        amount = row[2] or 0.0
+
+        if income_type == 'interest':
+            result['total_interest'] = amount
+            result['interest_count'] = count
+        elif income_type == 'completed':
+            result['total_completed'] = amount
+        elif income_type == 'breach_end':
+            result['total_breach_end'] = amount
+        elif income_type == 'principal_reduction':
+            result['total_principal_reduction'] = amount
+
+        result['total_amount'] += amount
+
+    # 查询订单统计
+    cursor.execute(f'''
+    SELECT 
+        COUNT(*) as order_count,
+        MIN(date) as first_date,
+        MAX(date) as last_date
+    FROM orders 
+    WHERE {order_where}
+    ''', order_params)
+
+    order_row = cursor.fetchone()
+    if order_row:
+        result['order_count'] = order_row[0] or 0
+        result['first_order_date'] = order_row[1]
+        result['last_order_date'] = order_row[2]
+
+    return result
+
+
+@db_query
+def get_customer_orders_summary(conn, cursor, customer: str, start_date: str = None, end_date: str = None) -> List[Dict]:
+    """获取指定客户的所有订单及每笔订单的贡献汇总
+
+    返回每个订单的详细信息，包括：
+    - 订单基本信息
+    - 该订单的利息总额
+    - 该订单的完成金额
+    - 该订单的总贡献
+    """
+    # 构建查询条件
+    conditions = ["customer = ?"]
+    params = [customer.upper()]
+
+    if start_date:
+        conditions.append("date >= ?")
+        params.append(start_date)
+
+    if end_date:
+        conditions.append("date <= ?")
+        params.append(end_date)
+
+    where_clause = " AND ".join(conditions)
+
+    # 查询所有订单
+    cursor.execute(f'''
+    SELECT * FROM orders 
+    WHERE {where_clause}
+    ORDER BY date DESC
+    ''', params)
+
+    order_rows = cursor.fetchall()
+    orders = [dict(row) for row in order_rows]
+
+    # 为每个订单查询收入汇总
+    result = []
+    for order in orders:
+        order_id = order['order_id']
+
+        # 查询该订单的收入汇总
+        cursor.execute('''
+        SELECT 
+            type,
+            COUNT(*) as count,
+            SUM(amount) as total_amount
+        FROM income_records 
+        WHERE order_id = ?
+        GROUP BY type
+        ''', (order_id,))
+
+        income_rows = cursor.fetchall()
+
+        order_interest = 0.0
+        order_completed = 0.0
+        order_breach_end = 0.0
+        order_principal_reduction = 0.0
+        order_total = 0.0
+
+        for row in income_rows:
+            income_type = row[0]
+            amount = row[2] or 0.0
+
+            if income_type == 'interest':
+                order_interest = amount
+            elif income_type == 'completed':
+                order_completed = amount
+            elif income_type == 'breach_end':
+                order_breach_end = amount
+            elif income_type == 'principal_reduction':
+                order_principal_reduction = amount
+
+            order_total += amount
+
+        result.append({
+            'order': order,
+            'interest': order_interest,
+            'completed': order_completed,
+            'breach_end': order_breach_end,
+            'principal_reduction': order_principal_reduction,
+            'total_contribution': order_total
+        })
+
+    return result
+
+
+@db_query
 def get_income_summary_by_type(conn, cursor, start_date: str, end_date: str = None,
-                                group_id: Optional[str] = None) -> Dict:
+                               group_id: Optional[str] = None) -> Dict:
     """按收入类型和客户类型汇总"""
     query = """
     SELECT 
@@ -1127,7 +1365,8 @@ def mark_operation_undone(conn, cursor, operation_id: int) -> bool:
 @db_query
 def get_operation_by_id(conn, cursor, operation_id: int) -> Optional[Dict]:
     """根据ID获取操作记录"""
-    cursor.execute('SELECT * FROM operation_history WHERE id = ?', (operation_id,))
+    cursor.execute(
+        'SELECT * FROM operation_history WHERE id = ?', (operation_id,))
     row = cursor.fetchone()
     if row:
         result = dict(row)
