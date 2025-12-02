@@ -66,13 +66,13 @@ if project_root_str not in sys.path:
 
 # 调试信息（仅在开发环境显示）
 if os.getenv('DEBUG', '0') == '1':
-try:
-    print(f"[DEBUG] Project root: {project_root_str}")
-    print(f"[DEBUG] Current working directory: {os.getcwd()}")
+    try:
+        print(f"[DEBUG] Project root: {project_root_str}")
+        print(f"[DEBUG] Current working directory: {os.getcwd()}")
         print(f"[DEBUG] Python path includes project root: {project_root_str in sys.path}")
         print(f"[DEBUG] Handlers directory exists: {Path(project_root / 'handlers' / '__init__.py').exists()}")
-except Exception as e:
-    print(f"[DEBUG] Error in debug output: {e}")
+    except Exception as e:
+        print(f"[DEBUG] Error in debug output: {e}")
 
 
 # 配置日志
