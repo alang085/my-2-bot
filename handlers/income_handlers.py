@@ -76,7 +76,8 @@ async def format_income_detail(record: dict) -> str:
 
     # 格式：时间 | 订单号 | 金额（对齐显示）
     # 时间：8字符（HH:MM:SS），订单号：25字符，金额：15字符
-    detail = f"{time_str:>8} | {order_id:>25} | {amount_str:>15}"
+    # 使用左对齐，让第一列的第一个字对齐
+    detail = f"{time_str:<8} | {order_id:<25} | {amount_str:>15}"
 
     return detail
 
@@ -139,7 +140,7 @@ async def generate_income_report(records: list, start_date: str, end_date: str,
 
         report += f"【{type_name}】总计: {type_total:,.2f} ({type_count}笔)\n"
         report += f"{'─' * 50}\n"
-        report += f"{'时间':>8} | {'订单号':>25} | {'金额':>15}\n"
+        report += f"{'时间':<8} | {'订单号':<25} | {'金额':>15}\n"
         report += f"{'─' * 50}\n"
 
         # 分页处理
@@ -181,7 +182,7 @@ async def generate_income_report(records: list, start_date: str, end_date: str,
 
             report += f"【{type_name}】总计: {type_total:,.2f} ({type_count}笔)\n"
             report += f"{'─' * 50}\n"
-            report += f"{'时间':>8} | {'订单号':>25} | {'金额':>15}\n"
+            report += f"{'时间':<8} | {'订单号':<25} | {'金额':>15}\n"
             report += f"{'─' * 50}\n"
 
             # 如果记录太多，只显示第一页
@@ -228,14 +229,14 @@ async def show_income_detail(update: Update, context: ContextTypes.DEFAULT_TYPE)
     keyboard = []
 
     # 如果有分页，添加分页按钮
-    if has_more and total_pages > 1:
+    if total_pages > 1:
         page_buttons = []
-        if total_pages > 1:
-            # 使用 | 作为分隔符，避免日期中的连字符干扰
-            date = get_daily_period_date()
+        # 第一页只显示"下一页"
+        if 1 < total_pages:
             page_buttons.append(InlineKeyboardButton(
                 "下一页 ▶️", callback_data=f"income_page_{current_type}|2|{date}|{date}"))
-        keyboard.append(page_buttons)
+        if page_buttons:
+            keyboard.append(page_buttons)
 
     keyboard.extend([
         [
@@ -298,9 +299,14 @@ async def handle_income_query_input(update: Update, context: ContextTypes.DEFAUL
         keyboard = []
 
         # 如果有分页，添加分页按钮
-        if has_more and total_pages > 1:
-            keyboard.append([InlineKeyboardButton(
-                "下一页 ▶️", callback_data=f"income_page_{current_type}|2|{start_date}|{end_date}")])
+        if total_pages > 1:
+            page_buttons = []
+            # 第一页只显示"下一页"
+            if 1 < total_pages:
+                page_buttons.append(InlineKeyboardButton(
+                    "下一页 ▶️", callback_data=f"income_page_{current_type}|2|{start_date}|{end_date}"))
+            if page_buttons:
+                keyboard.append(page_buttons)
 
         keyboard.append([InlineKeyboardButton(
             "🔙 返回", callback_data="income_view_today")])
