@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes
 import db_operations
 from utils.stats_helpers import update_all_stats, update_liquid_capital
 from utils.date_helpers import get_daily_period_date
+from utils.chat_helpers import is_group_chat
 from decorators import error_handler, authorized_required
 from config import ADMIN_IDS
 import asyncio
@@ -29,64 +30,116 @@ async def send_admin_notification(context: ContextTypes.DEFAULT_TYPE, message: s
 async def undo_last_operation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """撤销上一个操作"""
     user_id = update.effective_user.id if update.effective_user else None
+    is_group = is_group_chat(update)
+    
     if not user_id:
-        await update.message.reply_text("❌ 无法获取用户信息")
+        if is_group:
+            await update.message.reply_text("❌ Unable to get user information")
+        else:
+            await update.message.reply_text("❌ 无法获取用户信息")
         return
 
     # 检查连续撤销次数
     undo_count = context.user_data.get('undo_count', 0)
     if undo_count >= MAX_UNDO_COUNT:
-        await update.message.reply_text(
-            f"❌ 已达到最大连续撤销次数（{MAX_UNDO_COUNT}次）。\n"
-            "请重新输入正确数据后，再使用撤销功能。"
-        )
+        if is_group:
+            await update.message.reply_text(
+                f"❌ Maximum consecutive undo count reached ({MAX_UNDO_COUNT} times).\n"
+                "Please enter correct data again before using undo."
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ 已达到最大连续撤销次数（{MAX_UNDO_COUNT}次）。\n"
+                "请重新输入正确数据后，再使用撤销功能。"
+            )
         return
 
-    # 获取最后一个操作
-    last_operation = await db_operations.get_last_operation(user_id)
+    # 获取当前聊天环境的 chat_id
+    chat_id = update.effective_chat.id if update.effective_chat else None
+    if not chat_id:
+        if is_group:
+            await update.message.reply_text("❌ Unable to get chat environment information")
+        else:
+            await update.message.reply_text("❌ 无法获取聊天环境信息")
+        return
+    
+    # 获取当前聊天环境中的最后一个操作
+    last_operation = await db_operations.get_last_operation(user_id, chat_id)
     if not last_operation:
-        await update.message.reply_text("❌ 没有可撤销的操作")
+        # 判断是私聊还是群聊
+        is_private = chat_id > 0
+        if is_group:
+            await update.message.reply_text(
+                f"❌ No undoable operation in this group chat.\n\n"
+                f"Note: /undo command can only undo the last operation executed in the current chat environment."
+            )
+        else:
+            chat_type = "私聊"
+            await update.message.reply_text(
+                f"❌ 在当前{chat_type}环境中没有可撤销的操作\n\n"
+                f"提示：/undo 命令只能撤销在当前聊天环境（私聊或群聊）中执行的上一个操作。"
+            )
         return
 
     operation_type = last_operation['operation_type']
     operation_data = last_operation['operation_data']
     operation_id = last_operation['id']
 
+    # 获取群名（如果是群聊）
+    group_name = None
+    if is_group and update.effective_chat:
+        group_name = update.effective_chat.title
+    
     try:
         # 根据操作类型执行撤销
         success = False
         undo_message = ""
+        undo_message_en = ""
 
         if operation_type == 'interest':
             # 撤销利息收入
             success = await _undo_interest(operation_data)
-            undo_message = f"✅ 已撤销利息收入 {operation_data.get('amount', 0):.2f}"
+            amount = operation_data.get('amount', 0)
+            undo_message = f"✅ 已撤销利息收入 {amount:.2f}"
+            undo_message_en = f"✅ Undone interest income {amount:.2f}"
 
         elif operation_type == 'principal_reduction':
             # 撤销本金减少
             success = await _undo_principal_reduction(operation_data)
-            undo_message = f"✅ 已撤销本金减少 {operation_data.get('amount', 0):.2f}"
+            amount = operation_data.get('amount', 0)
+            undo_message = f"✅ 已撤销本金减少 {amount:.2f}"
+            undo_message_en = f"✅ Undone principal reduction {amount:.2f}"
 
         elif operation_type == 'expense':
             # 撤销开销记录
             success = await _undo_expense(operation_data)
-            expense_type = "公司开销" if operation_data.get('type') == 'company' else "其他开销"
-            undo_message = f"✅ 已撤销{expense_type} {operation_data.get('amount', 0):.2f}"
+            amount = operation_data.get('amount', 0)
+            expense_type = operation_data.get('type')
+            if expense_type == 'company':
+                undo_message = f"✅ 已撤销公司开销 {amount:.2f}"
+                undo_message_en = f"✅ Undone company expense {amount:.2f}"
+            else:
+                undo_message = f"✅ 已撤销其他开销 {amount:.2f}"
+                undo_message_en = f"✅ Undone other expense {amount:.2f}"
 
         elif operation_type == 'order_completed':
             # 撤销订单完成
             success = await _undo_order_completed(operation_data)
             undo_message = f"✅ 已撤销订单完成操作"
+            undo_message_en = f"✅ Undone order completion"
 
         elif operation_type == 'order_breach_end':
             # 撤销违约完成
             success = await _undo_order_breach_end(operation_data)
             undo_message = f"✅ 已撤销违约完成操作"
+            undo_message_en = f"✅ Undone breach order completion"
 
         elif operation_type == 'order_created':
             # 撤销订单创建
             success = await _undo_order_created(operation_data)
-            undo_message = f"✅ 已撤销订单创建：{operation_data.get('order_id', 'N/A')}"
+            order_id = operation_data.get('order_id', 'N/A')
+            undo_message = f"✅ 已撤销订单创建：{order_id}"
+            undo_message_en = f"✅ Undone order creation: {order_id}"
 
         elif operation_type == 'order_state_change':
             # 撤销订单状态变更
@@ -94,9 +147,13 @@ async def undo_last_operation(update: Update, context: ContextTypes.DEFAULT_TYPE
             old_state = operation_data.get('old_state', 'N/A')
             new_state = operation_data.get('new_state', 'N/A')
             undo_message = f"✅ 已撤销订单状态变更：{new_state} → {old_state}"
+            undo_message_en = f"✅ Undone order state change: {new_state} → {old_state}"
 
         else:
-            await update.message.reply_text(f"❌ 不支持撤销此类型的操作: {operation_type}")
+            if is_group:
+                await update.message.reply_text(f"❌ Unsupported operation type for undo: {operation_type}")
+            else:
+                await update.message.reply_text(f"❌ 不支持撤销此类型的操作: {operation_type}")
             return
 
         if success:
@@ -106,30 +163,48 @@ async def undo_last_operation(update: Update, context: ContextTypes.DEFAULT_TYPE
             # 增加连续撤销次数
             context.user_data['undo_count'] = undo_count + 1
 
-            # 发送成功消息
-            await update.message.reply_text(undo_message)
+            # 发送成功消息（群聊使用英语，私聊使用中文）
+            if is_group:
+                await update.message.reply_text(undo_message_en)
+            else:
+                await update.message.reply_text(undo_message)
 
             # 获取用户信息用于通知
             user_name = update.effective_user.username or f"用户{user_id}"
             user_full_name = update.effective_user.full_name or user_name
 
-            # 向管理员发送通知
+            # 向管理员发送通知（包含群名）
+            chat_info = ""
+            if is_group and group_name:
+                chat_info = f"群名: {group_name}\n"
+            elif is_group:
+                chat_info = f"群聊 ID: {chat_id}\n"
+            else:
+                chat_info = f"私聊 (用户ID: {user_id})\n"
+            
             admin_message = (
                 f"⚠️ 撤销操作通知\n\n"
                 f"用户: {user_full_name} (@{user_name if update.effective_user.username else 'N/A'})\n"
                 f"用户ID: {user_id}\n"
+                f"{chat_info}"
                 f"操作类型: {operation_type}\n"
-                f"撤销详情: {undo_message}\n"
+                f"撤销详情: {undo_message if not is_group else undo_message_en}\n"
                 f"连续撤销次数: {undo_count + 1}/{MAX_UNDO_COUNT}\n"
                 f"操作时间: {last_operation.get('created_at', 'N/A')}"
             )
             await send_admin_notification(context, admin_message)
         else:
-            await update.message.reply_text("❌ 撤销操作失败，请检查数据状态")
+            if is_group:
+                await update.message.reply_text("❌ Undo operation failed. Please check data status.")
+            else:
+                await update.message.reply_text("❌ 撤销操作失败，请检查数据状态")
 
     except Exception as e:
         logger.error(f"撤销操作时出错: {e}", exc_info=True)
-        await update.message.reply_text(f"❌ 撤销操作时出错: {str(e)}")
+        if is_group:
+            await update.message.reply_text(f"❌ Error during undo operation: {str(e)}")
+        else:
+            await update.message.reply_text(f"❌ 撤销操作时出错: {str(e)}")
 
 
 async def _undo_interest(operation_data: dict) -> bool:

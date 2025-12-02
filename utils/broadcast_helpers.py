@@ -1,6 +1,7 @@
 """播报相关工具函数"""
 from datetime import datetime, timedelta, date
 from typing import Tuple, Optional
+import pytz
 
 
 def calculate_next_payment_date(order_date: Optional[date] = None) -> Tuple[datetime, str, str]:
@@ -26,8 +27,9 @@ def calculate_next_payment_date(order_date: Optional[date] = None) -> Tuple[date
     - 当前日期：2025-11-29 (周五)
     - 下个付款日期：2025-12-02 (下一个周二)
     """
-    # 获取当前日期
-    today = datetime.now().date()
+    # 获取当前日期（使用北京时间）
+    tz = pytz.timezone('Asia/Shanghai')
+    today = datetime.now(tz).date()
     
     # 如果提供了订单日期，获取订单日期的星期几
     if order_date:

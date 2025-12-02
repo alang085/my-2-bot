@@ -385,9 +385,17 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         date = get_daily_period_date()
         records = await db_operations.get_income_records(date, date)
         from handlers.income_handlers import generate_income_report
-        report = await generate_income_report(records, date, date, f"今日收入明细 ({date})")
+        report, has_more, total_pages, current_type = await generate_income_report(
+            records, date, date, f"今日收入明细 ({date})", page=1
+        )
         
-        keyboard = [
+        keyboard = []
+        
+        # 如果有分页，添加分页按钮
+        if has_more and total_pages > 1:
+            keyboard.append([InlineKeyboardButton("下一页 ▶️", callback_data=f"income_page_{current_type}_2_{date}_{date}")])
+        
+        keyboard.extend([
             [
                 InlineKeyboardButton("📅 本月收入", callback_data="income_view_month"),
                 InlineKeyboardButton("📆 日期查询", callback_data="income_view_query")
@@ -398,7 +406,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             [
                 InlineKeyboardButton("🔙 返回报表", callback_data="report_view_today_ALL")
             ]
-        ]
+        ])
         
         try:
             await query.edit_message_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -420,15 +428,23 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         
         records = await db_operations.get_income_records(start_date, end_date)
         from handlers.income_handlers import generate_income_report
-        report = await generate_income_report(records, start_date, end_date, f"本月收入明细 ({start_date} 至 {end_date})")
+        report, has_more, total_pages, current_type = await generate_income_report(
+            records, start_date, end_date, f"本月收入明细 ({start_date} 至 {end_date})", page=1
+        )
         
-        keyboard = [
+        keyboard = []
+        
+        # 如果有分页，添加分页按钮
+        if has_more and total_pages > 1:
+            keyboard.append([InlineKeyboardButton("下一页 ▶️", callback_data=f"income_page_{current_type}_2_{start_date}_{end_date}")])
+        
+        keyboard.extend([
             [
                 InlineKeyboardButton("📄 今日收入", callback_data="income_view_today"),
                 InlineKeyboardButton("📆 日期查询", callback_data="income_view_query")
             ],
             [InlineKeyboardButton("🔙 返回报表", callback_data="report_view_today_ALL")]
-        ]
+        ])
         
         try:
             await query.edit_message_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -489,13 +505,88 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         from handlers.income_handlers import generate_income_report
         type_name = {"completed": "订单完成", "breach_end": "违约完成", 
                      "interest": "利息收入", "principal_reduction": "本金减少"}.get(income_type, income_type)
-        report = await generate_income_report(records, date, date, f"今日{type_name}收入 ({date})")
+        report, has_more, total_pages, current_type = await generate_income_report(
+            records, date, date, f"今日{type_name}收入 ({date})", page=1, income_type=income_type
+        )
         
-        keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="income_view_today")]]
+        keyboard = []
+        
+        # 如果有分页，添加分页按钮
+        if has_more and total_pages > 1:
+            keyboard.append([InlineKeyboardButton("下一页 ▶️", callback_data=f"income_page_{income_type}_2_{date}_{date}")])
+        
+        keyboard.append([InlineKeyboardButton("🔙 返回", callback_data="income_view_today")])
         try:
             await query.edit_message_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
         except Exception as e:
             logger.error(f"编辑收入明细消息失败: {e}", exc_info=True)
+            await query.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    # 处理收入明细分页
+    if data.startswith("income_page_"):
+        if not user_id or user_id not in ADMIN_IDS:
+            await query.answer("❌ 此功能仅限管理员使用", show_alert=True)
+            return
+        
+        await query.answer()
+        
+        # 解析分页参数: income_page_{type}_{page}_{start_date}_{end_date}
+        parts = data.replace("income_page_", "").split("_")
+        if len(parts) < 2:
+            await query.answer("❌ 分页参数错误", show_alert=True)
+            return
+        
+        income_type = parts[0]
+        page = int(parts[1])
+        
+        # 解析日期
+        if len(parts) >= 4:
+            start_date = parts[2]
+            end_date = parts[3]
+        else:
+            # 如果没有日期，使用今日
+            start_date = end_date = get_daily_period_date()
+        
+        # 获取记录
+        records = await db_operations.get_income_records(start_date, end_date, type=income_type if income_type != 'None' else None)
+        
+        from handlers.income_handlers import generate_income_report, INCOME_TYPES
+        type_name = INCOME_TYPES.get(income_type, income_type) if income_type != 'None' else "全部"
+        
+        # 生成标题
+        if start_date == end_date:
+            title = f"今日{type_name}收入 ({start_date})"
+        else:
+            title = f"{type_name}收入 ({start_date} 至 {end_date})"
+        
+        report, has_more, total_pages, current_type = await generate_income_report(
+            records, start_date, end_date, title, page=page, income_type=income_type if income_type != 'None' else None
+        )
+        
+        # 构建分页按钮
+        keyboard = []
+        page_buttons = []
+        
+        if page > 1:
+            page_buttons.append(InlineKeyboardButton("◀️ 上一页", callback_data=f"income_page_{income_type}_{page - 1}_{start_date}_{end_date}"))
+        
+        if has_more and page < total_pages:
+            page_buttons.append(InlineKeyboardButton("下一页 ▶️", callback_data=f"income_page_{income_type}_{page + 1}_{start_date}_{end_date}"))
+        
+        if page_buttons:
+            keyboard.append(page_buttons)
+        
+        # 添加返回按钮
+        if start_date == end_date and start_date == get_daily_period_date():
+            keyboard.append([InlineKeyboardButton("🔙 返回", callback_data="income_view_today")])
+        else:
+            keyboard.append([InlineKeyboardButton("🔙 返回", callback_data="income_view_today")])
+        
+        try:
+            await query.edit_message_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            logger.error(f"编辑收入明细分页消息失败: {e}", exc_info=True)
             await query.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 

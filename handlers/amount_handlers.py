@@ -86,29 +86,35 @@ async def handle_amount_operation(update: Update, context: ContextTypes.DEFAULT_
                     await update_all_stats('interest', amount, 0, None)
                     await update_liquid_capital(amount)
                     # 记录收入明细
-                    await db_operations.record_income(
-                        date=get_daily_period_date(),
-                        type='interest',
-                        amount=amount,
-                        group_id=None,
-                        order_id=None,
-                        order_date=None,
-                        customer=None,
-                        weekday_group=None,
-                        note="利息收入（无关联订单）",
-                        created_by=user_id
-                    )
-                    # 记录操作历史（用于撤销）
-                    await db_operations.record_operation(
-                        user_id=user_id,
-                        operation_type='interest',
-                        operation_data={
-                            'amount': amount,
-                            'group_id': None,
-                            'order_id': None,
-                            'date': get_daily_period_date()
-                        }
-                    )
+                    try:
+                        await db_operations.record_income(
+                            date=get_daily_period_date(),
+                            type='interest',
+                            amount=amount,
+                            group_id=None,
+                            order_id=None,
+                            order_date=None,
+                            customer=None,
+                            weekday_group=None,
+                            note="利息收入（无关联订单）",
+                            created_by=user_id
+                        )
+                    except Exception as e:
+                        logger.error(f"记录利息收入明细失败: {e}", exc_info=True)
+                    # 记录操作历史（用于撤销）- 使用当前聊天环境的 chat_id
+                    current_chat_id = update.effective_chat.id if update.effective_chat else None
+                    if current_chat_id and user_id:
+                        await db_operations.record_operation(
+                            user_id=user_id,
+                            operation_type='interest',
+                            operation_data={
+                                'amount': amount,
+                                'group_id': None,
+                                'order_id': None,
+                                'date': get_daily_period_date()
+                            },
+                            chat_id=current_chat_id  # 当前操作发生的聊天环境
+                        )
                     # 重置撤销计数
                     reset_undo_count(context, user_id)
                     # 群组只回复成功，私聊显示详情
@@ -171,33 +177,40 @@ async def process_principal_reduction(update: Update, order: dict, amount: float
 
         # 记录收入明细
         user_id = update.effective_user.id if update.effective_user else None
-        await db_operations.record_income(
-            date=get_daily_period_date(),
-            type='principal_reduction',
-            amount=amount,
-            group_id=group_id,
-            order_id=order['order_id'],
-            order_date=order['date'],
-            customer=order['customer'],
-            weekday_group=order['weekday_group'],
-            note=f"本金减少 {amount:.2f}，剩余 {new_amount:.2f}",
-            created_by=user_id
-        )
+        try:
+            await db_operations.record_income(
+                date=get_daily_period_date(),
+                type='principal_reduction',
+                amount=amount,
+                group_id=group_id,
+                order_id=order['order_id'],
+                order_date=order['date'],
+                customer=order['customer'],
+                weekday_group=order['weekday_group'],
+                note=f"本金减少 {amount:.2f}，剩余 {new_amount:.2f}",
+                created_by=user_id
+            )
+        except Exception as e:
+            logger.error(f"记录本金减少收入明细失败: {e}", exc_info=True)
+            # 继续执行，不中断流程
 
-        # 记录操作历史（用于撤销）
-        await db_operations.record_operation(
-            user_id=user_id,
-            operation_type='principal_reduction',
-            operation_data={
-                'amount': amount,
-                'old_amount': order['amount'],
-                'new_amount': new_amount,
-                'group_id': group_id,
-                'chat_id': chat_id,
-                'order_id': order['order_id'],
-                'date': get_daily_period_date()
-            }
-        )
+        # 记录操作历史（用于撤销）- 使用当前聊天环境的 chat_id
+        current_chat_id = update.effective_chat.id if update.effective_chat else (order.get('chat_id') if order else None)
+        if current_chat_id and user_id:
+            await db_operations.record_operation(
+                user_id=user_id,
+                operation_type='principal_reduction',
+                operation_data={
+                    'amount': amount,
+                    'old_amount': order['amount'],
+                    'new_amount': new_amount,
+                    'group_id': group_id,
+                    'chat_id': order['chat_id'],  # 订单的 chat_id（用于撤销时恢复订单）
+                    'order_id': order['order_id'],
+                    'date': get_daily_period_date()
+                },
+                chat_id=current_chat_id  # 当前操作发生的聊天环境
+            )
 
         # 重置撤销计数
         if context:
@@ -237,30 +250,37 @@ async def process_interest(update: Update, order: dict, amount: float, context: 
 
         # 记录收入明细
         user_id = update.effective_user.id if update.effective_user else None
-        await db_operations.record_income(
-            date=get_daily_period_date(),
-            type='interest',
-            amount=amount,
-            group_id=group_id,
-            order_id=order['order_id'],
-            order_date=order['date'],
-            customer=order['customer'],
-            weekday_group=order['weekday_group'],
-            note="利息收入",
-            created_by=user_id
-        )
+        try:
+            await db_operations.record_income(
+                date=get_daily_period_date(),
+                type='interest',
+                amount=amount,
+                group_id=group_id,
+                order_id=order['order_id'],
+                order_date=order['date'],
+                customer=order['customer'],
+                weekday_group=order['weekday_group'],
+                note="利息收入",
+                created_by=user_id
+            )
+        except Exception as e:
+            logger.error(f"记录利息收入明细失败: {e}", exc_info=True)
 
         # 记录操作历史（用于撤销）
-        await db_operations.record_operation(
-            user_id=user_id,
-            operation_type='interest',
-            operation_data={
-                'amount': amount,
-                'group_id': group_id,
-                'order_id': order['order_id'],
-                'date': get_daily_period_date()
-            }
-        )
+        # 记录操作历史（用于撤销）- 使用当前聊天环境的 chat_id
+        current_chat_id = update.effective_chat.id if update.effective_chat else (order.get('chat_id') if order else None)
+        if current_chat_id and user_id:
+            await db_operations.record_operation(
+                user_id=user_id,
+                operation_type='interest',
+                operation_data={
+                    'amount': amount,
+                    'group_id': group_id,
+                    'order_id': order['order_id'],
+                    'date': get_daily_period_date()
+                },
+                chat_id=current_chat_id  # 当前操作发生的聊天环境
+            )
 
         # 重置撤销计数
         if context:

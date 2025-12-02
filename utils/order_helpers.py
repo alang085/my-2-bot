@@ -353,7 +353,8 @@ async def try_create_order_from_title(update: Update, context: ContextTypes.DEFA
                 'initial_state': initial_state,
                 'is_historical': is_historical,
                 'date': created_at
-            }
+            },
+            chat_id=chat_id
         )
         # 重置撤销计数
         if context:

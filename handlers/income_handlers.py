@@ -20,10 +20,14 @@ def _is_admin(user_id: Optional[int]) -> bool:
 
 
 async def format_income_detail(record: dict) -> str:
-    """格式化单条收入明细"""
-    type_name = INCOME_TYPES.get(record['type'], record['type'])
-    customer_name = CUSTOMER_TYPES.get(record['customer'], record['customer'] or '无关联')
+    """格式化单条收入明细 - 格式：金额、订单号、时间"""
+    # 格式化金额
+    amount_str = f"{record['amount']:,.2f}"
     
+    # 获取订单号
+    order_id = record.get('order_id') or '无'
+    
+    # 获取时间
     time_str = ""
     if record.get('created_at'):
         try:
@@ -32,38 +36,34 @@ async def format_income_detail(record: dict) -> str:
         except:
             pass
     
-    detail = f"💰 {record['amount']:,.2f}"
-    if record.get('order_id'):
-        detail += f" - 订单: {record['order_id']}"
-    if record.get('group_id'):
-        detail += f" - 归属: {record['group_id']}"
-    if record.get('customer'):
-        detail += f" - {customer_name}"
-    if time_str:
-        detail += f" - [{time_str}]"
-    if record.get('note'):
-        detail += f"\n  📝 {record['note']}"
+    # 格式：金额 订单号 时间
+    detail = f"{amount_str} | {order_id} | {time_str if time_str else '无时间'}"
     
     return detail
 
 
 async def generate_income_report(records: list, start_date: str, end_date: str,
-                                  title: str = "收入明细") -> str:
-    """生成收入明细报表"""
-    if not records:
-        return f"💰 {title}\n\n{start_date} 至 {end_date}\n\n❌ 无记录"
+                                  title: str = "收入明细", page: int = 1, 
+                                  items_per_page: int = 20, income_type: Optional[str] = None) -> tuple:
+    """
+    生成收入明细报表（支持分页）
     
-    # 按类型和客户类型分组
+    返回: (report_text, has_more_pages, total_pages, current_type)
+    """
+    if not records:
+        return (f"💰 {title}\n\n{start_date} 至 {end_date}\n\n❌ 无记录", False, 0, None)
+    
+    # 如果指定了类型，只显示该类型的记录
+    if income_type:
+        records = [r for r in records if r['type'] == income_type]
+    
+    # 按类型分组
     by_type = {}
     for record in records:
         type_name = record['type']
-        customer = record['customer'] or 'None'
-        
         if type_name not in by_type:
-            by_type[type_name] = {}
-        if customer not in by_type[type_name]:
-            by_type[type_name][customer] = []
-        by_type[type_name][customer].append(record)
+            by_type[type_name] = []
+        by_type[type_name].append(record)
     
     # 计算总计
     total_amount = sum(r['amount'] for r in records)
@@ -77,14 +77,22 @@ async def generate_income_report(records: list, start_date: str, end_date: str,
     # 按类型显示
     type_order = ['completed', 'breach_end', 'interest', 'principal_reduction', 'adjustment']
     
-    for type_key in type_order:
-        if type_key not in by_type:
-            continue
-        
+    # 如果指定了类型，只显示该类型
+    if income_type:
+        type_order = [income_type] if income_type in type_order else []
+    
+    has_more_pages = False
+    total_pages = 1
+    current_type = None
+    
+    # 如果指定了类型，只显示该类型并支持分页
+    if income_type and income_type in by_type:
+        type_key = income_type
         type_name = INCOME_TYPES.get(type_key, type_key)
-        type_records = []
-        for customer_list in by_type[type_key].values():
-            type_records.extend(customer_list)
+        type_records = by_type[type_key]
+        
+        # 按时间倒序排序（最新的在前）
+        type_records.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         
         type_total = sum(r['amount'] for r in type_records)
         type_count = len(type_records)
@@ -92,44 +100,69 @@ async def generate_income_report(records: list, start_date: str, end_date: str,
         report += f"【{type_name}】总计: {type_total:,.2f} ({type_count}笔)\n"
         report += f"{'─' * 30}\n"
         
-        # 按客户类型分组显示
-        for customer_key, customer_records in sorted(by_type[type_key].items()):
-            customer_name = CUSTOMER_TYPES.get(customer_key, customer_key) if customer_key != 'None' else '无关联'
-            customer_total = sum(r['amount'] for r in customer_records)
-            customer_count = len(customer_records)
+        # 分页处理
+        if type_count > items_per_page:
+            total_pages = (type_count + items_per_page - 1) // items_per_page
+            start_idx = (page - 1) * items_per_page
+            end_idx = start_idx + items_per_page
+            display_records = type_records[start_idx:end_idx]
+            has_more_pages = end_idx < type_count
             
-            report += f"  {customer_name} - {customer_total:,.2f} ({customer_count}笔)\n"
+            report += f"📄 第 {page}/{total_pages} 页 (显示 {start_idx + 1}-{min(end_idx, type_count)}/{type_count} 条)\n"
+            report += f"{'─' * 30}\n"
+        else:
+            display_records = type_records
+            has_more_pages = False
+        
+        # 显示明细（全部显示）
+        for i, record in enumerate(display_records, 1):
+            detail = await format_income_detail(record)
+            global_idx = (page - 1) * items_per_page + i if type_count > items_per_page else i
+            report += f"{global_idx}. {detail}\n"
+        
+        current_type = type_key
+        report += "\n"
+    else:
+        # 显示所有类型，每个类型如果记录太多，只显示第一页并提供分页按钮
+        for type_key in type_order:
+            if type_key not in by_type:
+                continue
             
-            # 显示明细（最多显示前10条）
-            display_records = customer_records[:10]
+            type_name = INCOME_TYPES.get(type_key, type_key)
+            type_records = by_type[type_key]
+            
+            # 按时间倒序排序（最新的在前）
+            type_records.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+            
+            type_total = sum(r['amount'] for r in type_records)
+            type_count = len(type_records)
+            
+            report += f"【{type_name}】总计: {type_total:,.2f} ({type_count}笔)\n"
+            report += f"{'─' * 30}\n"
+            
+            # 如果记录太多，只显示第一页
+            if type_count > items_per_page:
+                display_records = type_records[:items_per_page]
+                report += f"📄 显示前 {items_per_page}/{type_count} 条\n"
+                report += f"{'─' * 30}\n"
+            else:
+                display_records = type_records
+            
+            # 显示明细（全部显示）
             for i, record in enumerate(display_records, 1):
                 detail = await format_income_detail(record)
-                report += f"    {i}. {detail}\n"
-            
-            if len(customer_records) > 10:
-                report += f"    ... (还有 {len(customer_records) - 10} 条记录)\n"
+                report += f"{i}. {detail}\n"
             
             report += "\n"
-        
-        report += "\n"
+            
+            # 如果当前类型记录最多，设置为当前类型（用于分页）
+            if not current_type or type_count > len(by_type.get(current_type, [])):
+                current_type = type_key
     
     report += f"{'═' * 30}\n"
     report += f"💰 总收入: {total_amount:,.2f}\n"
     
-    # 按归属ID汇总
-    by_group = {}
-    for record in records:
-        group_id = record.get('group_id') or '全局'
-        if group_id not in by_group:
-            by_group[group_id] = 0
-        by_group[group_id] += record['amount']
-    
-    if by_group:
-        report += f"\n【按归属ID汇总】\n"
-        for group_id, amount in sorted(by_group.items(), key=lambda x: x[1], reverse=True):
-            report += f"  • {group_id}: {amount:,.2f}\n"
-    
-    return report
+    return (report, has_more_pages, total_pages, current_type)
 
 
 @error_handler
@@ -145,9 +178,20 @@ async def show_income_detail(update: Update, context: ContextTypes.DEFAULT_TYPE)
     date = get_daily_period_date()
     records = await db_operations.get_income_records(date, date)
     
-    report = await generate_income_report(records, date, date, f"今日收入明细 ({date})")
+    report, has_more, total_pages, current_type = await generate_income_report(
+        records, date, date, f"今日收入明细 ({date})", page=1
+    )
     
-    keyboard = [
+    keyboard = []
+    
+    # 如果有分页，添加分页按钮
+    if has_more and total_pages > 1:
+        page_buttons = []
+        if total_pages > 1:
+            page_buttons.append(InlineKeyboardButton("下一页 ▶️", callback_data=f"income_page_{current_type}_2"))
+        keyboard.append(page_buttons)
+    
+    keyboard.extend([
         [
             InlineKeyboardButton("📅 本月收入", callback_data="income_view_month"),
             InlineKeyboardButton("📆 日期查询", callback_data="income_view_query")
@@ -158,7 +202,7 @@ async def show_income_detail(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [
             InlineKeyboardButton("🔙 返回报表", callback_data="report_view_today_ALL")
         ]
-    ]
+    ])
     
     try:
         if update.callback_query:
@@ -199,10 +243,18 @@ async def handle_income_query_input(update: Update, context: ContextTypes.DEFAUL
         
         records = await db_operations.get_income_records(start_date, end_date)
         
-        report = await generate_income_report(records, start_date, end_date, 
-                                               f"收入明细 ({start_date} 至 {end_date})")
+        report, has_more, total_pages, current_type = await generate_income_report(
+            records, start_date, end_date, 
+            f"收入明细 ({start_date} 至 {end_date})", page=1
+        )
         
-        keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="income_view_today")]]
+        keyboard = []
+        
+        # 如果有分页，添加分页按钮
+        if has_more and total_pages > 1:
+            keyboard.append([InlineKeyboardButton("下一页 ▶️", callback_data=f"income_page_{current_type}_2_{start_date}_{end_date}")])
+        
+        keyboard.append([InlineKeyboardButton("🔙 返回", callback_data="income_view_today")])
         await update.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
         context.user_data['state'] = None
         

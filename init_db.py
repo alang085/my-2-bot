@@ -284,6 +284,7 @@ def init_database():
     CREATE TABLE IF NOT EXISTS operation_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
+        chat_id INTEGER NOT NULL,
         operation_type TEXT NOT NULL,
         operation_data TEXT NOT NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -297,6 +298,9 @@ def init_database():
     ''')
     cursor.execute('''
     CREATE INDEX IF NOT EXISTS idx_operation_undone ON operation_history(is_undone, created_at DESC)
+    ''')
+    cursor.execute('''
+    CREATE INDEX IF NOT EXISTS idx_operation_chat_user ON operation_history(chat_id, user_id, created_at DESC)
     ''')
 
     # 创建索引以优化查询性能

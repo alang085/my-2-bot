@@ -1081,24 +1081,24 @@ def get_income_summary_by_group(conn, cursor, start_date: str, end_date: str = N
 
 
 @db_transaction
-def record_operation(conn, cursor, user_id: int, operation_type: str, operation_data: Dict) -> int:
+def record_operation(conn, cursor, user_id: int, operation_type: str, operation_data: Dict, chat_id: int) -> int:
     """记录操作历史，返回操作ID"""
     cursor.execute('''
-    INSERT INTO operation_history (user_id, operation_type, operation_data, is_undone)
-    VALUES (?, ?, ?, 0)
-    ''', (user_id, operation_type, json.dumps(operation_data, ensure_ascii=False)))
+    INSERT INTO operation_history (user_id, chat_id, operation_type, operation_data, is_undone)
+    VALUES (?, ?, ?, ?, 0)
+    ''', (user_id, chat_id, operation_type, json.dumps(operation_data, ensure_ascii=False)))
     return cursor.lastrowid
 
 
 @db_query
-def get_last_operation(conn, cursor, user_id: int) -> Optional[Dict]:
-    """获取用户最后一个未撤销的操作"""
+def get_last_operation(conn, cursor, user_id: int, chat_id: int) -> Optional[Dict]:
+    """获取用户在指定聊天环境中的最后一个未撤销的操作"""
     cursor.execute('''
     SELECT * FROM operation_history 
-    WHERE user_id = ? AND is_undone = 0
+    WHERE user_id = ? AND chat_id = ? AND is_undone = 0
     ORDER BY created_at DESC, id DESC
     LIMIT 1
-    ''', (user_id,))
+    ''', (user_id, chat_id))
     row = cursor.fetchone()
     if row:
         result = dict(row)

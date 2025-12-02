@@ -231,18 +231,21 @@ async def _handle_breach_end_amount(update: Update, context: ContextTypes.DEFAUL
         # 记录收入明细
         from utils.date_helpers import get_daily_period_date
         user_id = update.effective_user.id if update.effective_user else None
-        await db_operations.record_income(
-            date=get_daily_period_date(),
-            type='breach_end',
-            amount=amount,
-            group_id=group_id,
-            order_id=order['order_id'],
-            order_date=order['date'],
-            customer=order['customer'],
-            weekday_group=order['weekday_group'],
-            note="违约完成",
-            created_by=user_id
-        )
+        try:
+            await db_operations.record_income(
+                date=get_daily_period_date(),
+                type='breach_end',
+                amount=amount,
+                group_id=group_id,
+                order_id=order['order_id'],
+                order_date=order['date'],
+                customer=order['customer'],
+                weekday_group=order['weekday_group'],
+                note="违约完成",
+                created_by=user_id
+            )
+        except Exception as e:
+            logger.error(f"记录违约完成收入明细失败: {e}", exc_info=True)
 
         # 记录操作历史（用于撤销）
         if user_id:
@@ -256,7 +259,8 @@ async def _handle_breach_end_amount(update: Update, context: ContextTypes.DEFAUL
                     'group_id': group_id,
                     'amount': amount,
                     'date': get_daily_period_date()
-                }
+                },
+                chat_id=chat_id
             )
             reset_undo_count(context, user_id)
 
@@ -384,17 +388,21 @@ async def _handle_expense_input(update: Update, context: ContextTypes.DEFAULT_TY
 
         # 记录操作历史（用于撤销）
         from handlers.undo_handlers import reset_undo_count
-        await db_operations.record_operation(
-            user_id=user_id,
-            operation_type='expense',
-            operation_data={
-                'amount': amount,
-                'type': expense_type,
-                'note': note,
-                'date': date_str,
-                'expense_record_id': expense_id
-            }
-        )
+        # 记录操作历史（用于撤销）- 使用当前聊天环境的 chat_id
+        current_chat_id = update.effective_chat.id if update.effective_chat else None
+        if current_chat_id and user_id:
+            await db_operations.record_operation(
+                user_id=user_id,
+                operation_type='expense',
+                operation_data={
+                    'amount': amount,
+                    'type': expense_type,
+                    'note': note,
+                    'date': date_str,
+                    'expense_record_id': expense_id
+                },
+                chat_id=current_chat_id  # 当前操作发生的聊天环境
+            )
         # 重置撤销计数
         reset_undo_count(context, user_id)
 

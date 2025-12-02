@@ -60,7 +60,8 @@ async def set_normal(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'new_state': 'normal',
                     'group_id': order['group_id'],
                     'amount': order['amount']
-                }
+                },
+                chat_id=chat_id
             )
             if context:
                 reset_undo_count(context, user_id)
@@ -122,7 +123,8 @@ async def set_overdue(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'new_state': 'overdue',
                     'group_id': order['group_id'],
                     'amount': order['amount']
-                }
+                },
+                chat_id=chat_id
             )
             if context:
                 reset_undo_count(context, user_id)
@@ -174,18 +176,22 @@ async def set_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 记录收入明细
     user_id = update.effective_user.id if update.effective_user else None
-    await db_operations.record_income(
-        date=get_daily_period_date(),
-        type='completed',
-        amount=amount,
-        group_id=group_id,
-        order_id=order['order_id'],
-        order_date=order['date'],
-        customer=order['customer'],
-        weekday_group=order['weekday_group'],
-        note="订单完成",
-        created_by=user_id
-    )
+    try:
+        await db_operations.record_income(
+            date=get_daily_period_date(),
+            type='completed',
+            amount=amount,
+            group_id=group_id,
+            order_id=order['order_id'],
+            order_date=order['date'],
+            customer=order['customer'],
+            weekday_group=order['weekday_group'],
+            note="订单完成",
+            created_by=user_id
+        )
+    except Exception as e:
+        logger.error(f"记录订单完成收入明细失败: {e}", exc_info=True)
+        # 继续执行，不中断流程
 
     # 记录操作历史（用于撤销）
     if user_id:
@@ -200,7 +206,8 @@ async def set_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'amount': amount,
                 'old_state': old_state,
                 'date': get_daily_period_date()
-            }
+            },
+            chat_id=chat_id
         )
         if context:
             reset_undo_count(context, user_id)
@@ -262,7 +269,8 @@ async def set_breach(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'new_state': 'breach',
                     'group_id': group_id,
                     'amount': amount
-                }
+                },
+                chat_id=chat_id
             )
             if context:
                 reset_undo_count(context, user_id)
@@ -320,18 +328,21 @@ async def set_breach_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # 记录收入明细
             user_id = update.effective_user.id if update.effective_user else None
-            await db_operations.record_income(
-                date=get_daily_period_date(),
-                type='breach_end',
-                amount=amount,
-                group_id=group_id,
-                order_id=order['order_id'],
-                order_date=order['date'],
-                customer=order['customer'],
-                weekday_group=order['weekday_group'],
-                note="违约完成",
-                created_by=user_id
-            )
+            try:
+                await db_operations.record_income(
+                    date=get_daily_period_date(),
+                    type='breach_end',
+                    amount=amount,
+                    group_id=group_id,
+                    order_id=order['order_id'],
+                    order_date=order['date'],
+                    customer=order['customer'],
+                    weekday_group=order['weekday_group'],
+                    note="违约完成",
+                    created_by=user_id
+                )
+            except Exception as e:
+                logger.error(f"记录违约完成收入明细失败: {e}", exc_info=True)
 
             # 记录操作历史（用于撤销）
             if user_id:
@@ -345,7 +356,8 @@ async def set_breach_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         'group_id': group_id,
                         'amount': amount,
                         'date': get_daily_period_date()
-                    }
+                    },
+                    chat_id=chat_id
                 )
                 reset_undo_count(context, user_id)
 
