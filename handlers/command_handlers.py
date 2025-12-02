@@ -70,7 +70,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/list_user_group_mappings - 列出所有用户归属ID映射\n"
         "/update_weekday_groups - 更新星期分组\n"
         "/fix_statistics - 修复统计数据\n"
-        "/find_tail_orders - 查找尾数订单\n\n"
+        "/find_tail_orders - 查找尾数订单\n"
+        "/check_mismatch [日期] - 检查收入明细和统计数据不一致\n\n"
         "⚠️ 部分操作需要管理员权限".format(
             financial_data['liquid_funds'])
     )
@@ -695,3 +696,109 @@ async def list_user_group_mappings(update: Update, context: ContextTypes.DEFAULT
         message += f"👤 用户ID: `{mapping['user_id']}` → 归属ID: `{mapping['group_id']}`\n"
 
     await update.message.reply_text(message, parse_mode='Markdown')
+
+
+@admin_required
+@private_chat_only
+@error_handler
+async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """检查收入明细和统计数据的不一致问题（管理员命令）"""
+    import asyncio
+    import subprocess
+    import sys
+    from pathlib import Path
+    
+    # 获取日期参数（可选）
+    date = None
+    if context.args and len(context.args) > 0:
+        date = context.args[0]
+    
+    # 发送开始消息
+    msg = await update.message.reply_text("🔍 正在检查数据不一致问题，请稍候...")
+    
+    try:
+        # 获取项目根目录
+        project_root = Path(__file__).parent.parent.absolute()
+        script_path = project_root / "check_income_statistics_mismatch.py"
+        
+        # 检查脚本是否存在
+        if not script_path.exists():
+            await msg.edit_text("❌ 错误: 找不到诊断脚本 check_income_statistics_mismatch.py")
+            return
+        
+        # 构建命令
+        cmd = [sys.executable, str(script_path)]
+        if date:
+            cmd.append(date)
+        
+        # 运行脚本（捕获输出）
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(project_root)
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        # 解码输出
+        output = stdout.decode('utf-8', errors='replace') if stdout else ""
+        error_output = stderr.decode('utf-8', errors='replace') if stderr else ""
+        
+        if error_output:
+            logger.error(f"诊断脚本错误输出: {error_output}")
+        
+        # 处理输出（Telegram消息有长度限制4096字符）
+        if len(output) > 4096:
+            # 分段发送
+            chunks = []
+            current_chunk = ""
+            for line in output.split('\n'):
+                if len(current_chunk) + len(line) + 1 > 4000:
+                    if current_chunk:
+                        chunks.append(current_chunk)
+                    current_chunk = line + '\n'
+                else:
+                    current_chunk += line + '\n'
+            if current_chunk:
+                chunks.append(current_chunk)
+            
+            # 发送第一段
+            if chunks:
+                await msg.edit_text(f"```\n{chunks[0]}\n```", parse_mode='Markdown')
+                
+                # 发送剩余段
+                for i, chunk in enumerate(chunks[1:], 1):
+                    await update.message.reply_text(
+                        f"```\n[第 {i+1} 段]\n{chunk}\n```",
+                        parse_mode='Markdown'
+                    )
+            
+            # 发送总结
+            # 提取关键信息
+            summary = "📊 诊断完成（结果较长，已分段发送）\n\n"
+            
+            # 查找关键不一致信息
+            if "⚠️ 不一致!" in output:
+                summary += "⚠️ 发现数据不一致问题！\n\n"
+                # 提取差异信息
+                lines = output.split('\n')
+                for i, line in enumerate(lines):
+                    if "⚠️ 不一致!" in line:
+                        # 尝试获取上下文
+                        if i > 0:
+                            summary += f"{lines[i-1]}\n"
+                        summary += f"{line}\n\n"
+            
+            if summary != "📊 诊断完成（结果较长，已分段发送）\n\n":
+                await update.message.reply_text(summary)
+        else:
+            # 输出不太长，直接发送
+            if output:
+                await msg.edit_text(f"```\n{output}\n```", parse_mode='Markdown')
+            else:
+                await msg.edit_text("❌ 脚本执行完成，但没有输出")
+        
+    except Exception as e:
+        logger.error(f"执行诊断脚本时出错: {e}", exc_info=True)
+        await msg.edit_text(f"❌ 执行失败: {str(e)}")

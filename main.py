@@ -26,6 +26,7 @@ from handlers import (
     set_user_group_id,
     remove_user_group_id,
     list_user_group_mappings,
+    check_mismatch,
     set_normal,
     set_overdue,
     set_end,
@@ -52,7 +53,6 @@ import os
 import sys
 import logging
 from pathlib import Path
-from utils.logging_helpers import setup_beijing_logging
 
 # 确保项目根目录在 Python 路径中（必须在所有导入之前）
 # 这样无论从哪里运行，都能找到所有模块
@@ -76,8 +76,11 @@ if os.getenv('DEBUG', '0') == '1':
         print(f"[DEBUG] Error in debug output: {e}")
 
 
-# 配置日志（使用北京时间）
-setup_beijing_logging(level=logging.INFO)
+# 配置日志
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 
@@ -247,6 +250,8 @@ def main() -> None:
         "remove_user_group_id", private_chat_only(admin_required(remove_user_group_id))))
     application.add_handler(CommandHandler(
         "list_user_group_mappings", private_chat_only(admin_required(list_user_group_mappings))))
+    application.add_handler(CommandHandler(
+        "check_mismatch", private_chat_only(admin_required(check_mismatch))))
 
     # 自动订单创建（新成员入群监听 & 群名变更监听）
     application.add_handler(MessageHandler(

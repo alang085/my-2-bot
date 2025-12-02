@@ -27,7 +27,8 @@ from .command_handlers import (
     find_tail_orders,
     set_user_group_id,
     remove_user_group_id,
-    list_user_group_mappings
+    list_user_group_mappings,
+    check_mismatch
 )
 
 # 订单状态处理器
@@ -88,6 +89,7 @@ __all__ = [
     'set_user_group_id',
     'remove_user_group_id',
     'list_user_group_mappings',
+    'check_mismatch',
     # 订单状态处理器
     'set_normal',
     'set_overdue',
