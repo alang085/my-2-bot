@@ -707,30 +707,30 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import subprocess
     import sys
     from pathlib import Path
-    
+
     # 获取日期参数（可选）
     date = None
     if context.args and len(context.args) > 0:
         date = context.args[0]
-    
+
     # 发送开始消息
     msg = await update.message.reply_text("🔍 正在检查数据不一致问题，请稍候...")
-    
+
     try:
         # 获取项目根目录
         project_root = Path(__file__).parent.parent.absolute()
         script_path = project_root / "check_income_statistics_mismatch.py"
-        
+
         # 检查脚本是否存在
         if not script_path.exists():
             await msg.edit_text("❌ 错误: 找不到诊断脚本 check_income_statistics_mismatch.py")
             return
-        
+
         # 构建命令
         cmd = [sys.executable, str(script_path)]
         if date:
             cmd.append(date)
-        
+
         # 运行脚本（捕获输出）
         process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -738,16 +738,17 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             stderr=asyncio.subprocess.PIPE,
             cwd=str(project_root)
         )
-        
+
         stdout, stderr = await process.communicate()
-        
+
         # 解码输出
         output = stdout.decode('utf-8', errors='replace') if stdout else ""
-        error_output = stderr.decode('utf-8', errors='replace') if stderr else ""
-        
+        error_output = stderr.decode(
+            'utf-8', errors='replace') if stderr else ""
+
         if error_output:
             logger.error(f"诊断脚本错误输出: {error_output}")
-        
+
         # 处理输出（Telegram消息有长度限制4096字符）
         if len(output) > 4096:
             # 分段发送
@@ -762,22 +763,22 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     current_chunk += line + '\n'
             if current_chunk:
                 chunks.append(current_chunk)
-            
+
             # 发送第一段
             if chunks:
                 await msg.edit_text(f"```\n{chunks[0]}\n```", parse_mode='Markdown')
-                
+
                 # 发送剩余段
                 for i, chunk in enumerate(chunks[1:], 1):
                     await update.message.reply_text(
                         f"```\n[第 {i+1} 段]\n{chunk}\n```",
                         parse_mode='Markdown'
                     )
-            
+
             # 发送总结
             # 提取关键信息
             summary = "📊 诊断完成（结果较长，已分段发送）\n\n"
-            
+
             # 查找关键不一致信息
             if "⚠️ 不一致!" in output:
                 summary += "⚠️ 发现数据不一致问题！\n\n"
@@ -790,6 +791,11 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             summary += f"{lines[i-1]}\n"
                         summary += f"{line}\n\n"
             
+            # 添加说明：如何查看详细明细
+            summary += "\n💡 提示：要查看统计收入的来源明细（时间、订单号、金额），请使用：\n"
+            summary += f"  /收入明细 或点击报表中的「💰 收入明细」按钮\n"
+            summary += f"  或使用高级查询：分类查询 → 高级查询 → 选择日期和类型"
+
             if summary != "📊 诊断完成（结果较长，已分段发送）\n\n":
                 await update.message.reply_text(summary)
         else:
@@ -798,7 +804,7 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await msg.edit_text(f"```\n{output}\n```", parse_mode='Markdown')
             else:
                 await msg.edit_text("❌ 脚本执行完成，但没有输出")
-        
+
     except Exception as e:
         logger.error(f"执行诊断脚本时出错: {e}", exc_info=True)
         await msg.edit_text(f"❌ 执行失败: {str(e)}")
