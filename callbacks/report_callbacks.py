@@ -395,9 +395,11 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         if total_pages > 1:
             page_buttons = []
             # 第一页只显示"下一页"
+            # 确保类型字符串格式一致
+            type_for_callback = 'None' if current_type is None else current_type
             if 1 < total_pages:
                 page_buttons.append(InlineKeyboardButton(
-                    "下一页 ▶️", callback_data=f"income_page_{current_type}|2|{date}|{date}"))
+                    "下一页 ▶️", callback_data=f"income_page_{type_for_callback}|2|{date}|{date}"))
             if page_buttons:
                 keyboard.append(page_buttons)
 
@@ -448,9 +450,11 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         if total_pages > 1:
             page_buttons = []
             # 第一页只显示"下一页"
+            # 确保类型字符串格式一致
+            type_for_callback = 'None' if current_type is None else current_type
             if 1 < total_pages:
                 page_buttons.append(InlineKeyboardButton(
-                    "下一页 ▶️", callback_data=f"income_page_{current_type}|2|{start_date}|{end_date}"))
+                    "下一页 ▶️", callback_data=f"income_page_{type_for_callback}|2|{start_date}|{end_date}"))
             if page_buttons:
                 keyboard.append(page_buttons)
 
@@ -808,69 +812,69 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         else:
             final_group = group_key
 
-            # 查询记录
-            if final_group == 'NULL_SPECIAL':
-                all_records = await db_operations.get_income_records(
-                    start_date, end_date,
-                    type=final_type,
-                    group_id=None
-                )
-                records = [r for r in all_records if r.get('group_id') is None]
-            else:
-                records = await db_operations.get_income_records(
-                    start_date, end_date,
-                    type=final_type,
-                    group_id=final_group
-                )
-
-            from handlers.income_handlers import generate_income_report
-            INCOME_TYPES = {"completed": "订单完成", "breach_end": "违约完成",
-                            "interest": "利息收入", "principal_reduction": "本金减少"}
-
-            type_name = INCOME_TYPES.get(
-                final_type, "全部类型") if final_type else "全部类型"
-            if final_group == 'NULL_SPECIAL':
-                group_name = "全局"
-            elif final_group:
-                group_name = final_group
-            else:
-                group_name = "全部"
-
-            title = f"收入明细查询"
-            if start_date == end_date:
-                title += f" ({start_date})"
-            else:
-                title += f" ({start_date} 至 {end_date})"
-            title += f"\n类型: {type_name} | 归属ID: {group_name}"
-
-            report, has_more_pages, total_pages, current_type = await generate_income_report(
-                records, start_date, end_date, title, page=page, income_type=final_type
+        # 查询记录
+        if final_group == 'NULL_SPECIAL':
+            all_records = await db_operations.get_income_records(
+                start_date, end_date,
+                type=final_type,
+                group_id=None
+            )
+            records = [r for r in all_records if r.get('group_id') is None]
+        else:
+            records = await db_operations.get_income_records(
+                start_date, end_date,
+                type=final_type,
+                group_id=final_group
             )
 
-            keyboard = []
-            page_buttons = []
+        from handlers.income_handlers import generate_income_report
+        INCOME_TYPES = {"completed": "订单完成", "breach_end": "违约完成",
+                        "interest": "利息收入", "principal_reduction": "本金减少"}
 
-            if page > 1:
-                page_data = f"{final_type or 'all'}|{final_group or 'all' if final_group else 'all'}|{start_date}|{end_date}"
-                page_buttons.append(InlineKeyboardButton(
-                    "◀️ 上一页", callback_data=f"income_adv_page_{page_data}|{page - 1}"))
+        type_name = INCOME_TYPES.get(
+            final_type, "全部类型") if final_type else "全部类型"
+        if final_group == 'NULL_SPECIAL':
+            group_name = "全局"
+        elif final_group:
+            group_name = final_group
+        else:
+            group_name = "全部"
 
-            if page < total_pages:
-                page_data = f"{final_type or 'all'}|{final_group or 'all' if final_group else 'all'}|{start_date}|{end_date}"
-                page_buttons.append(InlineKeyboardButton(
-                    "下一页 ▶️", callback_data=f"income_adv_page_{page_data}|{page + 1}"))
+        title = f"收入明细查询"
+        if start_date == end_date:
+            title += f" ({start_date})"
+        else:
+            title += f" ({start_date} 至 {end_date})"
+        title += f"\n类型: {type_name} | 归属ID: {group_name}"
 
-            if page_buttons:
-                keyboard.append(page_buttons)
+        report, has_more_pages, total_pages, current_type = await generate_income_report(
+            records, start_date, end_date, title, page=page, income_type=final_type
+        )
 
-            keyboard.append([InlineKeyboardButton(
-                "🔙 返回高级查询", callback_data="income_advanced_query")])
+        keyboard = []
+        page_buttons = []
 
-            try:
-                await query.edit_message_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
-            except Exception as e:
-                logger.error(f"编辑收入明细消息失败: {e}", exc_info=True)
-                await query.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
+        if page > 1:
+            page_data = f"{final_type or 'all'}|{final_group or 'all' if final_group else 'all'}|{start_date}|{end_date}"
+            page_buttons.append(InlineKeyboardButton(
+                "◀️ 上一页", callback_data=f"income_adv_page_{page_data}|{page - 1}"))
+
+        if page < total_pages:
+            page_data = f"{final_type or 'all'}|{final_group or 'all' if final_group else 'all'}|{start_date}|{end_date}"
+            page_buttons.append(InlineKeyboardButton(
+                "下一页 ▶️", callback_data=f"income_adv_page_{page_data}|{page + 1}"))
+
+        if page_buttons:
+            keyboard.append(page_buttons)
+
+        keyboard.append([InlineKeyboardButton(
+            "🔙 返回高级查询", callback_data="income_advanced_query")])
+
+        try:
+            await query.edit_message_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            logger.error(f"编辑收入明细消息失败: {e}", exc_info=True)
+            await query.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data.startswith("income_type_"):
@@ -975,12 +979,16 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
                 # 没有日期，使用今日
                 start_date = end_date = get_daily_period_date()
 
+        # 处理 income_type：确保正确处理 None 和空字符串
+        query_type = None if (income_type == 'None' or income_type == '' or income_type is None) else income_type
+        callback_type = 'None' if query_type is None else income_type  # 用于回调数据，保持一致性
+
         # 获取记录
-        records = await db_operations.get_income_records(start_date, end_date, type=income_type if income_type != 'None' else None)
+        records = await db_operations.get_income_records(start_date, end_date, type=query_type)
 
         from handlers.income_handlers import generate_income_report, INCOME_TYPES
         type_name = INCOME_TYPES.get(
-            income_type, income_type) if income_type != 'None' else "全部"
+            query_type, query_type) if query_type else "全部"
 
         # 生成标题
         if start_date == end_date:
@@ -989,20 +997,23 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
             title = f"{type_name}收入 ({start_date} 至 {end_date})"
 
         report, has_more, total_pages, current_type = await generate_income_report(
-            records, start_date, end_date, title, page=page, income_type=income_type if income_type != 'None' else None
+            records, start_date, end_date, title, page=page, income_type=query_type
         )
 
         # 构建分页按钮
         keyboard = []
         page_buttons = []
 
+        # 确保回调数据使用一致的格式
+        callback_type_for_buttons = callback_type if callback_type != '' else 'None'
+
         if page > 1:
             page_buttons.append(InlineKeyboardButton(
-                "◀️ 上一页", callback_data=f"income_page_{income_type}|{page - 1}|{start_date}|{end_date}"))
+                "◀️ 上一页", callback_data=f"income_page_{callback_type_for_buttons}|{page - 1}|{start_date}|{end_date}"))
 
         if page < total_pages:
             page_buttons.append(InlineKeyboardButton(
-                "下一页 ▶️", callback_data=f"income_page_{income_type}|{page + 1}|{start_date}|{end_date}"))
+                "下一页 ▶️", callback_data=f"income_page_{callback_type_for_buttons}|{page + 1}|{start_date}|{end_date}"))
 
         if page_buttons:
             keyboard.append(page_buttons)

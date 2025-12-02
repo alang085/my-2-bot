@@ -302,9 +302,11 @@ async def handle_income_query_input(update: Update, context: ContextTypes.DEFAUL
         if total_pages > 1:
             page_buttons = []
             # 第一页只显示"下一页"
+            # 确保类型字符串格式一致
+            type_for_callback = 'None' if current_type is None else current_type
             if 1 < total_pages:
                 page_buttons.append(InlineKeyboardButton(
-                    "下一页 ▶️", callback_data=f"income_page_{current_type}|2|{start_date}|{end_date}"))
+                    "下一页 ▶️", callback_data=f"income_page_{type_for_callback}|2|{start_date}|{end_date}"))
             if page_buttons:
                 keyboard.append(page_buttons)
 
