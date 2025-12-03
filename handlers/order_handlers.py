@@ -392,10 +392,19 @@ async def set_breach_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     if is_group_chat(update):
-        prompt_msg = await reply_func(
-            "Please enter the final amount for this breach order (e.g., 5000).\n"
-            "This amount will be recorded as liquid capital inflow."
-        )
+        # 在群聊中，如果是从回调触发，状态卡消息可能已被删除
+        # 使用 context.bot.send_message 确保消息能正确发送
+        if update.callback_query:
+            prompt_msg = await context.bot.send_message(
+                chat_id=chat_id,
+                text="Please enter the final amount for this breach order (e.g., 5000).\n"
+                     "This amount will be recorded as liquid capital inflow."
+            )
+        else:
+            prompt_msg = await reply_func(
+                "Please enter the final amount for this breach order (e.g., 5000).\n"
+                "This amount will be recorded as liquid capital inflow."
+            )
         # 保存提示消息的ID，以便后续删除
         if prompt_msg:
             context.user_data['breach_end_prompt_msg_id'] = prompt_msg.message_id

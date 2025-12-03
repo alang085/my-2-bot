@@ -360,19 +360,18 @@ async def _handle_breach_end_amount(update: Update, context: ContextTypes.DEFAUL
 
         msg_en = f"✅ Breach Order Ended\nAmount: {amount:.2f}"
 
-        # 在群聊中，删除之前的提示消息
-        is_group = update.effective_chat.type == 'group' or update.effective_chat.type == 'supergroup'
-        if is_group:
-            prompt_msg_id = context.user_data.get('breach_end_prompt_msg_id')
-            if prompt_msg_id:
-                try:
-                    await context.bot.delete_message(
-                        chat_id=update.effective_chat.id,
-                        message_id=prompt_msg_id
-                    )
-                except:
-                    pass
-                context.user_data.pop('breach_end_prompt_msg_id', None)
+        # 删除之前的提示消息（提示消息在订单所在的群组中）
+        prompt_msg_id = context.user_data.get('breach_end_prompt_msg_id')
+        if prompt_msg_id:
+            try:
+                # 使用订单所在的chat_id删除提示消息
+                await context.bot.delete_message(
+                    chat_id=chat_id,
+                    message_id=prompt_msg_id
+                )
+            except Exception as e:
+                logger.debug(f"删除提示消息失败（可能已被删除）: {e}")
+            context.user_data.pop('breach_end_prompt_msg_id', None)
 
         # 如果当前聊天不是订单所在的聊天，通知群组
         if update.effective_chat.id != chat_id:
