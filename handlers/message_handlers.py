@@ -39,6 +39,12 @@ async def handle_new_chat_members(update: Update, context: ContextTypes.DEFAULT_
 
         logger.info(f"Bot added to group: '{chat.title}' (chat_id: {chat.id})")
 
+        # 检查群名是否包含完成或违约完成标记（⭕️ 或 ❌⭕️）
+        # 如果包含，说明订单已完成，不需要执行任何操作
+        if '⭕️' in chat.title or '❌⭕️' in chat.title:
+            logger.info(f"Group title contains completion markers (⭕️ or ❌⭕️), skipping order creation (chat_id: {chat.id})")
+            return
+
         # 尝试创建订单
         await try_create_order_from_title(update, context, chat, chat.title, manual_trigger=False)
     except Exception as e:
@@ -66,12 +72,26 @@ async def handle_new_chat_title(update: Update, context: ContextTypes.DEFAULT_TY
         logger.info(
             f"Group title changed to: '{new_title}' (chat_id: {chat.id})")
 
+        # 检查是否正在等待违约完成金额输入，如果是，不处理群名变更
+        # 避免在用户输入金额时，群名变更导致提示消息被删除或其他干扰
+        if context.user_data.get('state') == 'WAITING_BREACH_END_AMOUNT':
+            chat_id = context.user_data.get('breach_end_chat_id')
+            if chat_id and chat.id == chat_id:
+                logger.info(
+                    f"Waiting for breach end amount input, skipping title change handling (chat_id: {chat.id})")
+                return
+
         existing_order = await db_operations.get_order_by_chat_id(chat.id)
         if existing_order:
             logger.info(
                 f"Order exists, updating state from title: '{new_title}'")
             await update_order_state_from_title(update, context, existing_order, new_title)
         else:
+            # 检查群名是否包含完成或违约完成标记（⭕️ 或 ❌⭕️）
+            # 如果包含，说明订单已完成，不需要创建订单
+            if '⭕️' in new_title or '❌⭕️' in new_title:
+                logger.info(f"Group title contains completion markers (⭕️ or ❌⭕️), skipping order creation (chat_id: {chat.id})")
+                return
             logger.info(
                 f"No existing order, attempting to create from title: '{new_title}'")
             await try_create_order_from_title(update, context, chat, new_title, manual_trigger=False)
