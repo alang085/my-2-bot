@@ -21,6 +21,7 @@ from handlers import (
     list_employees,
     update_weekday_groups,
     fix_statistics,
+    fix_income_statistics,
     find_tail_orders,
     set_user_group_id,
     remove_user_group_id,
@@ -230,6 +231,8 @@ def main() -> None:
         "update_weekday_groups", private_chat_only(admin_required(update_weekday_groups))))
     application.add_handler(CommandHandler(
         "fix_statistics", private_chat_only(admin_required(fix_statistics))))
+    application.add_handler(CommandHandler(
+        "fix_income_statistics", private_chat_only(admin_required(fix_income_statistics))))
     application.add_handler(CommandHandler(
         "find_tail_orders", private_chat_only(admin_required(find_tail_orders))))
     application.add_handler(CommandHandler(

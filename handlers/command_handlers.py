@@ -478,6 +478,164 @@ async def fix_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_required
 @private_chat_only
+@error_handler
+async def fix_income_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """修复收入统计数据：根据收入明细重新计算所有收入统计数据（管理员命令）"""
+    try:
+        msg = await update.message.reply_text("🔄 开始修复收入统计数据...")
+
+        # 获取所有收入明细
+        income_records = await db_operations.get_income_records("1970-01-01", "2099-12-31")
+        
+        # 计算收入明细汇总
+        income_summary = {
+            'interest': 0.0,
+            'completed_amount': 0.0,
+            'breach_end_amount': 0.0,
+            'completed_count': 0,
+            'breach_end_count': 0
+        }
+        
+        # 按日期和归属ID分组统计
+        daily_income = {}  # {date: {group_id: {type: amount}}}
+        global_income = {}  # {type: amount}
+        
+        for record in income_records:
+            record_type = record.get('type', '')
+            amount = record.get('amount', 0.0) or 0.0
+            date = record.get('date', '')
+            group_id = record.get('group_id')
+            
+            if record_type == 'interest':
+                income_summary['interest'] += amount
+                global_income['interest'] = global_income.get('interest', 0.0) + amount
+                if date not in daily_income:
+                    daily_income[date] = {}
+                if group_id not in daily_income[date]:
+                    daily_income[date][group_id] = {}
+                daily_income[date][group_id]['interest'] = daily_income[date][group_id].get('interest', 0.0) + amount
+            elif record_type == 'completed':
+                income_summary['completed_amount'] += amount
+                income_summary['completed_count'] += 1
+                global_income['completed_amount'] = global_income.get('completed_amount', 0.0) + amount
+                global_income['completed_count'] = global_income.get('completed_count', 0) + 1
+                if date not in daily_income:
+                    daily_income[date] = {}
+                if group_id not in daily_income[date]:
+                    daily_income[date][group_id] = {}
+                daily_income[date][group_id]['completed_amount'] = daily_income[date][group_id].get('completed_amount', 0.0) + amount
+                daily_income[date][group_id]['completed_count'] = daily_income[date][group_id].get('completed_count', 0) + 1
+            elif record_type == 'breach_end':
+                income_summary['breach_end_amount'] += amount
+                income_summary['breach_end_count'] += 1
+                global_income['breach_end_amount'] = global_income.get('breach_end_amount', 0.0) + amount
+                global_income['breach_end_count'] = global_income.get('breach_end_count', 0) + 1
+                if date not in daily_income:
+                    daily_income[date] = {}
+                if group_id not in daily_income[date]:
+                    daily_income[date][group_id] = {}
+                daily_income[date][group_id]['breach_end_amount'] = daily_income[date][group_id].get('breach_end_amount', 0.0) + amount
+                daily_income[date][group_id]['breach_end_count'] = daily_income[date][group_id].get('breach_end_count', 0) + 1
+
+        # 获取当前统计数据
+        financial_data = await db_operations.get_financial_data()
+        stats = await db_operations.get_stats_by_date_range("1970-01-01", "2099-12-31", None)
+        
+        fixed_items = []
+        
+        # 修复全局统计数据（financial_data表）
+        interest_diff = income_summary['interest'] - financial_data.get('interest', 0.0)
+        if abs(interest_diff) > 0.01:
+            await db_operations.update_financial_data('interest', interest_diff)
+            fixed_items.append(f"全局利息收入: {interest_diff:+,.2f}")
+        
+        completed_amount_diff = income_summary['completed_amount'] - financial_data.get('completed_amount', 0.0)
+        if abs(completed_amount_diff) > 0.01:
+            await db_operations.update_financial_data('completed_amount', completed_amount_diff)
+            fixed_items.append(f"全局完成订单金额: {completed_amount_diff:+,.2f}")
+        
+        completed_count_diff = income_summary['completed_count'] - financial_data.get('completed_orders', 0)
+        if abs(completed_count_diff) > 0:
+            await db_operations.update_financial_data('completed_orders', float(completed_count_diff))
+            fixed_items.append(f"全局完成订单数: {completed_count_diff:+d}")
+        
+        breach_end_amount_diff = income_summary['breach_end_amount'] - financial_data.get('breach_end_amount', 0.0)
+        if abs(breach_end_amount_diff) > 0.01:
+            await db_operations.update_financial_data('breach_end_amount', breach_end_amount_diff)
+            fixed_items.append(f"全局违约完成金额: {breach_end_amount_diff:+,.2f}")
+        
+        breach_end_count_diff = income_summary['breach_end_count'] - financial_data.get('breach_end_orders', 0)
+        if abs(breach_end_count_diff) > 0:
+            await db_operations.update_financial_data('breach_end_orders', float(breach_end_count_diff))
+            fixed_items.append(f"全局违约完成订单数: {breach_end_count_diff:+d}")
+        
+        # 修复日结统计数据（daily_data表）
+        # 这里需要重新计算所有日期的统计数据
+        # 由于daily_data表是按日期和归属ID存储的，我们需要遍历所有日期和归属ID
+        daily_fixed_count = 0
+        for date, groups in daily_income.items():
+            for group_id, income_data in groups.items():
+                # 获取当前日结数据
+                current_daily = await db_operations.get_stats_by_date_range(date, date, group_id)
+                
+                # 修复利息收入
+                if 'interest' in income_data:
+                    interest_diff = income_data['interest'] - current_daily.get('interest', 0.0)
+                    if abs(interest_diff) > 0.01:
+                        await db_operations.update_daily_data(date, 'interest', interest_diff, group_id)
+                        daily_fixed_count += 1
+                
+                # 修复完成订单
+                if 'completed_amount' in income_data:
+                    completed_amount_diff = income_data['completed_amount'] - current_daily.get('completed_amount', 0.0)
+                    if abs(completed_amount_diff) > 0.01:
+                        await db_operations.update_daily_data(date, 'completed_amount', completed_amount_diff, group_id)
+                        daily_fixed_count += 1
+                
+                if 'completed_count' in income_data:
+                    completed_count_diff = income_data['completed_count'] - current_daily.get('completed_orders', 0)
+                    if abs(completed_count_diff) > 0:
+                        await db_operations.update_daily_data(date, 'completed_orders', float(completed_count_diff), group_id)
+                        daily_fixed_count += 1
+                
+                # 修复违约完成
+                if 'breach_end_amount' in income_data:
+                    breach_end_amount_diff = income_data['breach_end_amount'] - current_daily.get('breach_end_amount', 0.0)
+                    if abs(breach_end_amount_diff) > 0.01:
+                        await db_operations.update_daily_data(date, 'breach_end_amount', breach_end_amount_diff, group_id)
+                        daily_fixed_count += 1
+                
+                if 'breach_end_count' in income_data:
+                    breach_end_count_diff = income_data['breach_end_count'] - current_daily.get('breach_end_orders', 0)
+                    if abs(breach_end_count_diff) > 0:
+                        await db_operations.update_daily_data(date, 'breach_end_orders', float(breach_end_count_diff), group_id)
+                        daily_fixed_count += 1
+        
+        # 构建结果消息
+        if fixed_items or daily_fixed_count > 0:
+            result_msg = "✅ 收入统计数据修复完成！\n\n"
+            if fixed_items:
+                result_msg += "修复的全局统计:\n"
+                for item in fixed_items:
+                    result_msg += f"  • {item}\n"
+            if daily_fixed_count > 0:
+                result_msg += f"\n修复的日结统计: {daily_fixed_count} 条记录\n"
+            result_msg += f"\n📊 修复后的汇总:\n"
+            result_msg += f"  利息收入: {income_summary['interest']:.2f}\n"
+            result_msg += f"  完成订单: {income_summary['completed_count']} 笔, {income_summary['completed_amount']:.2f}\n"
+            result_msg += f"  违约完成: {income_summary['breach_end_count']} 笔, {income_summary['breach_end_amount']:.2f}\n"
+        else:
+            result_msg = "✅ 收入统计数据一致，无需修复。"
+
+        await msg.edit_text(result_msg)
+
+    except Exception as e:
+        logger.error(f"修复收入统计数据时出错: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ 修复失败: {str(e)}")
+
+
+@admin_required
+@private_chat_only
 async def find_tail_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """查找导致有效金额尾数的订单（管理员命令）"""
     try:
@@ -727,19 +885,29 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from utils.date_helpers import get_daily_period_date
     import db_operations
 
-    # 获取日期参数（可选）
-    date = None
+    # 获取日期参数（可选），支持日期范围
+    start_date = None
+    end_date = None
     if context.args and len(context.args) > 0:
-        date = context.args[0]
+        if len(context.args) == 1:
+            # 单个日期
+            start_date = context.args[0]
+            end_date = context.args[0]
+        elif len(context.args) >= 2:
+            # 日期范围
+            start_date = context.args[0]
+            end_date = context.args[1]
     else:
-        date = get_daily_period_date()
+        # 默认检查所有历史数据
+        start_date = "1970-01-01"
+        end_date = "2099-12-31"
 
     # 发送开始消息
     msg = await update.message.reply_text("🔍 正在检查数据不一致问题，请稍候...")
 
     try:
-        # 获取收入明细统计
-        income_records = await db_operations.get_income_records(date, date)
+        # 获取所有收入明细统计（从最早日期到现在）
+        income_records = await db_operations.get_income_records(start_date, end_date)
         
         # 计算收入明细汇总
         income_summary = {
@@ -764,25 +932,52 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif record_type == 'adjustment':
                 income_summary['adjustment'] += amount
 
-        # 获取统计数据
-        stats = await db_operations.get_stats_by_date_range(date, date, None)
+        # 获取统计数据（从daily_data表汇总）
+        stats = await db_operations.get_stats_by_date_range(start_date, end_date, None)
+        
+        # 获取全局统计数据（从financial_data表）
+        financial_data = await db_operations.get_financial_data()
         
         # 比较数据
         output_lines = []
         output_lines.append(f"📊 数据一致性检查报告")
-        output_lines.append(f"📅 检查日期: {date}")
-        output_lines.append("=" * 40)
+        if start_date == end_date:
+            output_lines.append(f"📅 检查日期: {start_date}")
+        else:
+            output_lines.append(f"📅 检查日期范围: {start_date} 至 {end_date}")
+        output_lines.append("=" * 50)
+        output_lines.append("")
+        
+        output_lines.append("📈 收入明细汇总（从income_records表）:")
+        output_lines.append(f"  利息收入: {income_summary['interest']:.2f}")
+        output_lines.append(f"  完成订单金额: {income_summary['completed_amount']:.2f}")
+        output_lines.append(f"  违约完成金额: {income_summary['breach_end_amount']:.2f}")
+        output_lines.append(f"  本金减少: {income_summary['principal_reduction']:.2f}")
+        output_lines.append("")
+        
+        output_lines.append("📊 统计数据汇总（从daily_data表）:")
+        output_lines.append(f"  利息收入: {stats.get('interest', 0.0):.2f}")
+        output_lines.append(f"  完成订单金额: {stats.get('completed_amount', 0.0):.2f}")
+        output_lines.append(f"  违约完成金额: {stats.get('breach_end_amount', 0.0):.2f}")
+        output_lines.append("")
+        
+        output_lines.append("💰 全局统计数据（从financial_data表）:")
+        output_lines.append(f"  利息收入: {financial_data.get('interest', 0.0):.2f}")
+        output_lines.append(f"  完成订单金额: {financial_data.get('completed_amount', 0.0):.2f}")
+        output_lines.append(f"  违约完成金额: {financial_data.get('breach_end_amount', 0.0):.2f}")
+        output_lines.append("")
+        output_lines.append("=" * 50)
         output_lines.append("")
         
         mismatches = []
         
-        # 检查利息收入
+        # 检查利息收入（比较daily_data和income_records）
         interest_diff = abs(stats.get('interest', 0.0) - income_summary['interest'])
         if interest_diff > 0.01:  # 允许0.01的浮点误差
             mismatches.append("利息收入")
             output_lines.append(f"⚠️ 不一致! 利息收入:")
-            output_lines.append(f"  统计表: {stats.get('interest', 0.0):.2f}")
-            output_lines.append(f"  明细表: {income_summary['interest']:.2f}")
+            output_lines.append(f"  统计表(daily_data): {stats.get('interest', 0.0):.2f}")
+            output_lines.append(f"  明细表(income_records): {income_summary['interest']:.2f}")
             output_lines.append(f"  差异: {interest_diff:.2f}")
             output_lines.append("")
         
@@ -791,8 +986,8 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if completed_diff > 0.01:
             mismatches.append("完成订单金额")
             output_lines.append(f"⚠️ 不一致! 完成订单金额:")
-            output_lines.append(f"  统计表: {stats.get('completed_amount', 0.0):.2f}")
-            output_lines.append(f"  明细表: {income_summary['completed_amount']:.2f}")
+            output_lines.append(f"  统计表(daily_data): {stats.get('completed_amount', 0.0):.2f}")
+            output_lines.append(f"  明细表(income_records): {income_summary['completed_amount']:.2f}")
             output_lines.append(f"  差异: {completed_diff:.2f}")
             output_lines.append("")
         
@@ -801,9 +996,37 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if breach_end_diff > 0.01:
             mismatches.append("违约完成金额")
             output_lines.append(f"⚠️ 不一致! 违约完成金额:")
-            output_lines.append(f"  统计表: {stats.get('breach_end_amount', 0.0):.2f}")
-            output_lines.append(f"  明细表: {income_summary['breach_end_amount']:.2f}")
+            output_lines.append(f"  统计表(daily_data): {stats.get('breach_end_amount', 0.0):.2f}")
+            output_lines.append(f"  明细表(income_records): {income_summary['breach_end_amount']:.2f}")
             output_lines.append(f"  差异: {breach_end_diff:.2f}")
+            output_lines.append("")
+        
+        # 检查全局统计数据与收入明细的一致性
+        global_interest_diff = abs(financial_data.get('interest', 0.0) - income_summary['interest'])
+        if global_interest_diff > 0.01:
+            mismatches.append("全局利息收入")
+            output_lines.append(f"⚠️ 不一致! 全局利息收入:")
+            output_lines.append(f"  全局统计(financial_data): {financial_data.get('interest', 0.0):.2f}")
+            output_lines.append(f"  明细表(income_records): {income_summary['interest']:.2f}")
+            output_lines.append(f"  差异: {global_interest_diff:.2f}")
+            output_lines.append("")
+        
+        global_completed_diff = abs(financial_data.get('completed_amount', 0.0) - income_summary['completed_amount'])
+        if global_completed_diff > 0.01:
+            mismatches.append("全局完成订单金额")
+            output_lines.append(f"⚠️ 不一致! 全局完成订单金额:")
+            output_lines.append(f"  全局统计(financial_data): {financial_data.get('completed_amount', 0.0):.2f}")
+            output_lines.append(f"  明细表(income_records): {income_summary['completed_amount']:.2f}")
+            output_lines.append(f"  差异: {global_completed_diff:.2f}")
+            output_lines.append("")
+        
+        global_breach_end_diff = abs(financial_data.get('breach_end_amount', 0.0) - income_summary['breach_end_amount'])
+        if global_breach_end_diff > 0.01:
+            mismatches.append("全局违约完成金额")
+            output_lines.append(f"⚠️ 不一致! 全局违约完成金额:")
+            output_lines.append(f"  全局统计(financial_data): {financial_data.get('breach_end_amount', 0.0):.2f}")
+            output_lines.append(f"  明细表(income_records): {income_summary['breach_end_amount']:.2f}")
+            output_lines.append(f"  差异: {global_breach_end_diff:.2f}")
             output_lines.append("")
         
         if not mismatches:
@@ -813,6 +1036,11 @@ async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             output_lines.append(f"❌ 发现 {len(mismatches)} 项不一致:")
             for item in mismatches:
                 output_lines.append(f"  - {item}")
+            output_lines.append("")
+            output_lines.append("💡 修复建议:")
+            output_lines.append("  1. 检查收入明细是否正确记录")
+            output_lines.append("  2. 使用 /fix_statistics 修复统计数据")
+            output_lines.append("  3. 如果问题持续，请检查日志文件")
         
         output_lines.append("")
         output_lines.append("💡 提示：要查看统计收入的来源明细，请使用：")
