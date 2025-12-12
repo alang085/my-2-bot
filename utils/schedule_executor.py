@@ -4,7 +4,11 @@ import asyncio
 from datetime import datetime, time as dt_time
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+import pytz
 import db_operations
+
+# 北京时区
+BEIJING_TZ = pytz.timezone('Asia/Shanghai')
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +59,7 @@ async def setup_scheduled_broadcasts(bot):
             
             scheduler.add_job(
                 send_scheduled_broadcast,
-                trigger=CronTrigger(hour=hour, minute=minute),
+                trigger=CronTrigger(hour=hour, minute=minute, timezone=BEIJING_TZ),
                 args=[bot, broadcast],
                 id=job_id,
                 replace_existing=True
@@ -126,7 +130,7 @@ async def setup_daily_report(bot):
     try:
         scheduler.add_job(
             send_daily_report,
-            trigger=CronTrigger(hour=23, minute=5),
+            trigger=CronTrigger(hour=23, minute=5, timezone=BEIJING_TZ),
             args=[bot],
             id="daily_report",
             replace_existing=True
