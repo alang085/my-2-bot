@@ -1,6 +1,7 @@
 """命令处理器模块 - 统一导出所有处理器函数"""
 from .undo_handlers import undo_last_operation
 from .schedule_handlers import show_schedule_menu, handle_schedule_input
+from .order_table_handlers import show_order_table
 from .payment_handlers import show_gcash, show_paymaya, show_all_accounts
 from .broadcast_handlers import broadcast_payment
 from .message_handlers import (
@@ -123,5 +124,7 @@ __all__ = [
     'show_schedule_menu',
     'handle_schedule_input',
     # 撤销操作处理器
-    'undo_last_operation'
+    'undo_last_operation',
+    # 订单总表处理器
+    'show_order_table'
 ]

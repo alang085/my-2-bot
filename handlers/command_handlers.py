@@ -48,6 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📊 查询:\n"
         "/report [归属ID] - 查看报表\n"
         "/myreport - 查看我的报表（仅限有权限的归属ID）\n"
+        "/ordertable - 订单总表（仅管理员）\n"
         "/search <类型> <值> - 搜索订单\n"
         "  类型: order_id/group_id/customer/state/date\n\n"
         "📢 播报:\n"
