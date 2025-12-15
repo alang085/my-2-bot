@@ -29,6 +29,9 @@ from .payment_callbacks import handle_payment_callback
 # 定时播报回调
 from .schedule_callbacks import handle_schedule_callback
 
+# 群组消息回调
+from .group_message_callbacks import handle_group_message_callback
+
 
 __all__ = [
     # 主回调（路由）
@@ -38,5 +41,6 @@ __all__ = [
     'handle_search_callback',
     'handle_order_action_callback',
     'handle_payment_callback',
-    'handle_schedule_callback'
+    'handle_schedule_callback',
+    'handle_group_message_callback'
 ]

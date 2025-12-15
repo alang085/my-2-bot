@@ -155,13 +155,11 @@ async def handle_payment_callback(update: Update, context: ContextTypes.DEFAULT_
         account_type = account.get('account_type', '').upper()
         account_number = account.get('account_number', '')
         account_name = account.get('account_name', '')
-        balance = account.get('balance', 0)
 
         message = (
             f"💳 {account_type} Payment Account\n\n"
             f"Account Number: {account_number}\n"
-            f"Account Name: {account_name}\n"
-            f"Current Balance: {balance:,.2f}"
+            f"Account Name: {account_name}"
         )
 
         chat_id = query.message.chat_id
@@ -268,14 +266,12 @@ async def handle_payment_callback(update: Update, context: ContextTypes.DEFAULT_
 
             account_number = account.get('account_number', '')
             account_name = account.get('account_name', '')
-            balance = account.get('balance', 0)
 
             # 格式化消息，方便发送给客户
             message = (
                 f"💳 GCASH Payment Account\n\n"
                 f"Account Number: `{account_number}`\n"
-                f"Account Name: {account_name}\n"
-                f"Current Balance: {balance:,.2f}\n\n"
+                f"Account Name: {account_name}\n\n"
                 f"请将上述账号信息发送给客户。"
             )
 
@@ -301,14 +297,12 @@ async def handle_payment_callback(update: Update, context: ContextTypes.DEFAULT_
 
             account_number = account.get('account_number', '')
             account_name = account.get('account_name', '')
-            balance = account.get('balance', 0)
 
             # 格式化消息，方便发送给客户
             message = (
                 f"💳 PayMaya Payment Account\n\n"
                 f"Account Number: `{account_number}`\n"
-                f"Account Name: {account_name}\n"
-                f"Current Balance: {balance:,.2f}\n\n"
+                f"Account Name: {account_name}\n\n"
                 f"请将上述账号信息发送给客户。"
             )
 
@@ -439,8 +433,93 @@ async def handle_payment_callback(update: Update, context: ContextTypes.DEFAULT_
         context.user_data['state'] = 'ADDING_ACCOUNT_PAYMAYA'
         await query.answer()
 
+    elif data.startswith("payment_update_balance_"):
+        # 修改指定ID的账户余额
+        try:
+            account_id = int(data.split("_")[-1])
+            account = await db_operations.get_payment_account_by_id(account_id)
+            if not account:
+                await query.answer("❌ 账户不存在", show_alert=True)
+                return
+
+            context.user_data['updating_balance_account_id'] = account_id
+            account_type = account.get('account_type', '')
+            account_name = account.get('account_name', '未设置')
+            account_number = account.get('account_number', '未设置')
+            current_balance = account.get('balance', 0)
+
+            type_name = 'GCASH' if account_type == 'gcash' else 'PayMaya'
+            display_name = account_name if account_name and account_name != '未设置' else account_number
+
+            await query.message.reply_text(
+                f"💰 修改 {type_name} 账户余额\n\n"
+                f"账户: {display_name}\n"
+                f"账号: {account_number}\n"
+                f"当前余额: {current_balance:,.2f}\n\n"
+                f"请输入新的余额：\n"
+                f"格式: 数字（如：5000 或 5000.50）\n"
+                f"输入 'cancel' 取消"
+            )
+
+            context.user_data['state'] = f'UPDATING_BALANCE_BY_ID_{account_id}'
+            await query.answer()
+        except (ValueError, IndexError):
+            await query.answer("❌ 无效的账户ID", show_alert=True)
+
     elif data.startswith("payment_edit_account_"):
-        # 编辑指定ID的账户
+        # 显示账户详情，提供编辑选项
+        try:
+            account_id = int(data.split("_")[-1])
+            account = await db_operations.get_payment_account_by_id(account_id)
+            if not account:
+                await query.answer("❌ 账户不存在", show_alert=True)
+                return
+
+            account_type = account.get('account_type', '')
+            account_name = account.get('account_name', '未设置')
+            account_number = account.get('account_number', '未设置')
+            balance = account.get('balance', 0)
+
+            type_name = 'GCASH' if account_type == 'gcash' else 'PayMaya'
+            display_name = account_name if account_name and account_name != '未设置' else account_number
+
+            msg = (
+                f"💳 {type_name} 账户详情\n\n"
+                f"账户名称: {display_name}\n"
+                f"账号号码: {account_number}\n"
+                f"当前余额: {balance:,.2f}\n\n"
+                f"请选择操作："
+            )
+
+            keyboard = [
+                [
+                    InlineKeyboardButton(
+                        "💰 修改余额",
+                        callback_data=f"payment_update_balance_{account_id}"
+                    ),
+                    InlineKeyboardButton(
+                        "✏️ 编辑信息",
+                        callback_data=f"payment_edit_info_{account_id}"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 返回",
+                        callback_data="payment_view_gcash" if account_type == 'gcash' else "payment_view_paymaya"
+                    )
+                ]
+            ]
+
+            await query.edit_message_text(
+                msg,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            await query.answer()
+        except (ValueError, IndexError):
+            await query.answer("❌ 无效的账户ID", show_alert=True)
+
+    elif data.startswith("payment_edit_info_"):
+        # 编辑指定ID的账户信息
         try:
             account_id = int(data.split("_")[-1])
             account = await db_operations.get_payment_account_by_id(account_id)

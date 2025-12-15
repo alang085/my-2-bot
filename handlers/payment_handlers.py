@@ -144,6 +144,10 @@ async def show_gcash(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(
                 f"✏️ {display_name}",
                 callback_data=f"payment_edit_account_{account_id}"
+            ),
+            InlineKeyboardButton(
+                "💰 修改余额",
+                callback_data=f"payment_update_balance_{account_id}"
             )
         ])
     
@@ -213,6 +217,10 @@ async def show_paymaya(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(
                 f"✏️ {display_name}",
                 callback_data=f"payment_edit_account_{account_id}"
+            ),
+            InlineKeyboardButton(
+                "💰 修改余额",
+                callback_data=f"payment_update_balance_{account_id}"
             )
         ])
     

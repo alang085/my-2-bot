@@ -1,6 +1,9 @@
 """日切报表生成器"""
+# 标准库
 import logging
 from typing import Dict
+
+# 本地模块
 import db_operations
 from utils.order_table_helpers import (
     generate_order_table,

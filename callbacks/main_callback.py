@@ -1,11 +1,16 @@
 """主回调处理器"""
+# 标准库
 import logging
+
+# 第三方库
 from telegram import Update
 from telegram.ext import ContextTypes
+
+# 本地模块
+import db_operations
 from callbacks.report_callbacks import handle_report_callback
 from callbacks.search_callbacks import handle_search_callback
 from callbacks.payment_callbacks import handle_payment_callback
-import db_operations
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,11 @@
 """Telegram订单管理机器人主入口"""
+# 标准库导入
+import os
+import sys
+import logging
+from pathlib import Path
+
+# 第三方库导入
 from telegram import error as telegram_error
 from telegram.ext import (
     Application,
@@ -7,6 +14,8 @@ from telegram.ext import (
     filters,
     CallbackQueryHandler
 )
+
+# 本地模块导入
 import init_db
 from config import BOT_TOKEN, ADMIN_IDS
 from handlers import (
@@ -48,13 +57,16 @@ from handlers import (
     undo_last_operation,
     show_order_table
 )
+from handlers.group_message_handlers import (
+    manage_group_messages,
+    add_group_config,
+    get_group_id,
+    manage_announcements
+)
 from callbacks import button_callback, handle_order_action_callback, handle_schedule_callback
+from callbacks.group_message_callbacks import handle_group_message_callback
 from utils.schedule_executor import setup_scheduled_broadcasts
 from decorators import error_handler, admin_required, authorized_required, private_chat_only, group_chat_only
-import os
-import sys
-import logging
-from pathlib import Path
 
 # 确保项目根目录在 Python 路径中（必须在所有导入之前）
 # 这样无论从哪里运行，都能找到所有模块
@@ -94,12 +106,23 @@ def main() -> None:
     try:
         from utils.db_helpers import import_database_backup, is_database_empty
 
-        backup_file = os.path.join(project_root_str, 'database_backup.sql')
         data_dir = os.getenv('DATA_DIR', project_root_str)
         db_path = os.path.join(data_dir, 'loan_bot.db')
 
+        # 检查备份文件位置（优先检查Volume目录，其次检查项目根目录）
+        backup_file = None
+        backup_file_in_data = os.path.join(data_dir, 'database_backup.sql')
+        backup_file_in_root = os.path.join(project_root_str, 'database_backup.sql')
+
+        if os.path.exists(backup_file_in_data):
+            backup_file = backup_file_in_data
+            logger.info(f"在Volume目录找到备份文件: {backup_file}")
+        elif os.path.exists(backup_file_in_root):
+            backup_file = backup_file_in_root
+            logger.info(f"在项目根目录找到备份文件: {backup_file}")
+
         # 检查是否存在备份文件且数据库不存在或为空
-        if os.path.exists(backup_file):
+        if backup_file:
             should_import = False
             import_reason = ""
 
@@ -111,11 +134,14 @@ def main() -> None:
                 import_reason = "数据库为空"
 
             if should_import:
-                logger.info(f"检测到数据库备份文件，开始导入（原因：{import_reason}）...")
+                logger.info(f"检测到数据库备份文件 ({backup_file})，开始导入（原因：{import_reason}）...")
                 print(f"[INFO] 检测到数据库备份文件，开始导入（原因：{import_reason}）...")
+                print(f"[INFO] 备份文件位置: {backup_file}")
 
                 if import_database_backup(backup_file, db_path):
                     print("[OK] 数据库备份导入成功")
+                    # 导入成功后，可选：删除备份文件（避免重复导入）
+                    # os.remove(backup_file)
                 else:
                     print("[ERROR] 导入数据库备份失败")
                     # 继续执行，让 init_db 创建新数据库
@@ -193,6 +219,16 @@ def main() -> None:
     
     # 订单总表（私聊，仅管理员）- 函数内部已有装饰器和权限检查
     application.add_handler(CommandHandler("ordertable", show_order_table))
+    
+    # 群组消息管理（私聊，仅管理员）
+    # /groupmsg - 管理群组消息配置（开工、收工、欢迎信息）
+    # /groupmsg_add - 添加总群配置
+    # /groupmsg_getid - 获取群组ID（在群组中使用）
+    # /announcement - 管理公司公告
+    application.add_handler(CommandHandler("groupmsg", manage_group_messages))
+    application.add_handler(CommandHandler("groupmsg_add", add_group_config))
+    application.add_handler(CommandHandler("groupmsg_getid", get_group_id))
+    application.add_handler(CommandHandler("announcement", manage_announcements))
 
     # 订单操作命令（群组，需要授权）
     application.add_handler(CommandHandler(
@@ -277,6 +313,10 @@ def main() -> None:
         authorized_required(handle_order_action_callback), pattern="^order_change_to_"))
     application.add_handler(CallbackQueryHandler(
         authorized_required(handle_schedule_callback), pattern="^schedule_"))
+    # 群组消息回调（groupmsg_*, announcement_*）
+    application.add_handler(CallbackQueryHandler(
+        authorized_required(handle_group_message_callback), pattern="^(groupmsg_|announcement_)"))
+    # 其他回调（报表、搜索、支付等）
     application.add_handler(CallbackQueryHandler(button_callback))
 
     # 启动机器人
@@ -313,6 +353,23 @@ def main() -> None:
                 print("日切报表任务已初始化")
             except UnicodeEncodeError:
                 print("Daily report task initialized")
+            
+            # 初始化群组消息定时任务
+            # 开工信息：每天11:00发送
+            # 收工信息：每天23:00发送
+            # 公司公告：每3小时（可配置）随机发送
+            from utils.schedule_executor import (
+                setup_start_work_schedule,
+                setup_end_work_schedule,
+                setup_announcement_schedule
+            )
+            await setup_start_work_schedule(application.bot)
+            await setup_end_work_schedule(application.bot)
+            await setup_announcement_schedule(application.bot)
+            try:
+                print("群组消息定时任务已初始化")
+            except UnicodeEncodeError:
+                print("Group message schedule tasks initialized")
 
         try:
             print("机器人已启动，等待消息...")

@@ -1,52 +1,86 @@
 """消息处理器（群组事件、文本输入等）"""
+# 标准库
 import logging
 from datetime import datetime
+
+# 第三方库
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+
+# 本地模块
 import db_operations
+from constants import USER_STATES
 from utils.chat_helpers import is_group_chat
-from utils.order_helpers import try_create_order_from_title, update_order_state_from_title
 from utils.date_helpers import get_daily_period_date
 from utils.message_helpers import display_search_results_helper
+from utils.order_helpers import try_create_order_from_title, update_order_state_from_title
 from utils.stats_helpers import update_all_stats, update_liquid_capital
-from constants import USER_STATES
 
 logger = logging.getLogger(__name__)
 
 
 async def handle_new_chat_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """处理新成员入群（机器人入群）"""
+    """处理新成员入群（机器人入群或新成员加入）"""
     try:
-        # 检查是否是机器人自己被添加
         if not update.message or not update.message.new_chat_members:
             return
 
+        chat = update.effective_chat
+        if not chat:
+            return
+
         bot_id = context.bot.id
+        new_members = []
         is_bot_added = False
+
+        # 分离新成员和机器人
         for member in update.message.new_chat_members:
             if member.id == bot_id:
                 is_bot_added = True
-                break
+            else:
+                new_members.append(member)
 
-        if not is_bot_added:
-            return
+        # 处理机器人被添加的情况（创建订单）
+        if is_bot_added:
+            if not chat.title:
+                logger.warning(
+                    f"Bot added to group but no title found (chat_id: {chat.id})")
+                return
 
-        chat = update.effective_chat
-        if not chat or not chat.title:
-            logger.warning(
-                f"Bot added to group but no title found (chat_id: {chat.id if chat else 'unknown'})")
-            return
+            logger.info(f"Bot added to group: '{chat.title}' (chat_id: {chat.id})")
 
-        logger.info(f"Bot added to group: '{chat.title}' (chat_id: {chat.id})")
+            # 检查群名是否包含完成或违约完成标记（⭕️ 或 ❌⭕️）
+            if '⭕️' in chat.title or '❌⭕️' in chat.title:
+                logger.info(f"Group title contains completion markers, skipping order creation (chat_id: {chat.id})")
+                return
 
-        # 检查群名是否包含完成或违约完成标记（⭕️ 或 ❌⭕️）
-        # 如果包含，说明订单已完成，不需要执行任何操作
-        if '⭕️' in chat.title or '❌⭕️' in chat.title:
-            logger.info(f"Group title contains completion markers (⭕️ or ❌⭕️), skipping order creation (chat_id: {chat.id})")
-            return
+            # 尝试创建订单
+            await try_create_order_from_title(update, context, chat, chat.title, manual_trigger=False)
 
-        # 尝试创建订单
-        await try_create_order_from_title(update, context, chat, chat.title, manual_trigger=False)
+        # 处理新成员加入的情况（发送欢迎信息）
+        if new_members:
+            # 检查该群是否配置了欢迎信息
+            config = await db_operations.get_group_message_config_by_chat_id(chat.id)
+            
+            if config and config.get('is_active') and config.get('welcome_message'):
+                welcome_message = config.get('welcome_message')
+                chat_title = chat.title or '群组'
+                
+                # 为每个新成员发送欢迎信息
+                for member in new_members:
+                    try:
+                        username = member.username or member.first_name or '新成员'
+                        # 替换变量
+                        personalized_message = welcome_message.replace('{username}', username)
+                        personalized_message = personalized_message.replace('{chat_title}', chat_title)
+                        
+                        await context.bot.send_message(
+                            chat_id=chat.id,
+                            text=personalized_message
+                        )
+                        logger.info(f"欢迎信息已发送给新成员 {member.id} 在群组 {chat.id}")
+                    except Exception as e:
+                        logger.error(f"发送欢迎信息失败: {e}", exc_info=True)
     except Exception as e:
         logger.error(f"Error in handle_new_chat_members: {e}", exc_info=True)
 
@@ -213,12 +247,159 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_edit_account_by_id(update, context, text, 'paymaya')
         return
 
+    # 处理按ID修改余额
+    if user_state and user_state.startswith('UPDATING_BALANCE_BY_ID_'):
+        await _handle_update_balance_by_id(update, context, text)
+        return
+
     # 处理定时播报输入
     if user_state and user_state.startswith('SCHEDULE_'):
         from handlers.schedule_handlers import handle_schedule_input
         handled = await handle_schedule_input(update, context)
         if handled:
             return
+
+    # 处理群组消息配置输入
+    if user_state == 'ADDING_GROUP_CONFIG':
+        if text.strip().lower() == 'cancel':
+            context.user_data['state'] = None
+            await update.message.reply_text("✅ 操作已取消")
+            return
+        
+        try:
+            chat_id = int(text.strip())
+            
+            # 尝试获取群组信息
+            try:
+                chat = await context.bot.get_chat(chat_id)
+                chat_title = chat.title or '未设置'
+            except:
+                chat_title = '未设置'
+            
+            # 保存配置
+            success = await db_operations.save_group_message_config(
+                chat_id=chat_id,
+                chat_title=chat_title,
+                is_active=1
+            )
+            
+            if success:
+                await update.message.reply_text(
+                    f"✅ 总群配置已添加\n\n"
+                    f"群组ID: {chat_id}\n"
+                    f"群组名称: {chat_title}\n\n"
+                    f"请使用 /groupmsg 设置消息内容"
+                )
+            else:
+                await update.message.reply_text("❌ 添加失败，可能已存在")
+            
+            context.user_data['state'] = None
+        except ValueError:
+            await update.message.reply_text("❌ 群组ID必须是数字，输入 'cancel' 取消")
+        except Exception as e:
+            logger.error(f"添加总群配置失败: {e}", exc_info=True)
+            await update.message.reply_text(f"❌ 添加失败: {e}")
+            context.user_data['state'] = None
+        return
+
+    if user_state == 'SETTING_GROUP_MESSAGE':
+        if text.strip().lower() == 'cancel':
+            context.user_data['state'] = None
+            context.user_data.pop('setting_message_chat_id', None)
+            context.user_data.pop('setting_message_type', None)
+            await update.message.reply_text("✅ 操作已取消")
+            return
+        
+        chat_id = context.user_data.get('setting_message_chat_id')
+        message_type = context.user_data.get('setting_message_type')
+        
+        if not chat_id or not message_type:
+            await update.message.reply_text("❌ 错误：找不到配置信息")
+            context.user_data['state'] = None
+            return
+        
+        # 根据类型设置消息
+        update_data = {}
+        if message_type == 'start_work':
+            update_data['start_work_message'] = text.strip()
+            type_name = '开工信息'
+        elif message_type == 'end_work':
+            update_data['end_work_message'] = text.strip()
+            type_name = '收工信息'
+        elif message_type == 'welcome':
+            update_data['welcome_message'] = text.strip()
+            type_name = '欢迎信息'
+        else:
+            await update.message.reply_text("❌ 错误：未知的消息类型")
+            context.user_data['state'] = None
+            return
+        
+        success = await db_operations.save_group_message_config(
+            chat_id=chat_id,
+            **update_data
+        )
+        
+        if success:
+            await update.message.reply_text(f"✅ {type_name}已设置")
+        else:
+            await update.message.reply_text(f"❌ 设置失败")
+        
+        context.user_data['state'] = None
+        context.user_data.pop('setting_message_chat_id', None)
+        context.user_data.pop('setting_message_type', None)
+        return
+
+    if user_state == 'ADDING_ANNOUNCEMENT':
+        if text.strip().lower() == 'cancel':
+            context.user_data['state'] = None
+            await update.message.reply_text("✅ 操作已取消")
+            return
+        
+        try:
+            ann_id = await db_operations.save_company_announcement(text.strip(), is_active=1)
+            if ann_id:
+                await update.message.reply_text(f"✅ 公告已添加 (ID: {ann_id})")
+            else:
+                await update.message.reply_text("❌ 添加失败")
+        except Exception as e:
+            logger.error(f"添加公告失败: {e}", exc_info=True)
+            await update.message.reply_text(f"❌ 添加失败: {e}")
+        
+        context.user_data['state'] = None
+        return
+
+    if user_state == 'SETTING_ANNOUNCEMENT_INTERVAL':
+        if text.strip().lower() == 'cancel':
+            context.user_data['state'] = None
+            await update.message.reply_text("✅ 操作已取消")
+            return
+        
+        try:
+            interval_hours = int(text.strip())
+            if interval_hours < 1:
+                await update.message.reply_text("❌ 间隔必须大于0，输入 'cancel' 取消")
+                return
+            
+            success = await db_operations.save_announcement_schedule(
+                interval_hours=interval_hours,
+                is_active=1
+            )
+            
+            if success:
+                await update.message.reply_text(
+                    f"✅ 发送间隔已设置为 {interval_hours} 小时\n\n"
+                    f"注意：需要重启机器人才能生效"
+                )
+            else:
+                await update.message.reply_text("❌ 设置失败")
+        except ValueError:
+            await update.message.reply_text("❌ 请输入有效的数字，输入 'cancel' 取消")
+        except Exception as e:
+            logger.error(f"设置公告间隔失败: {e}", exc_info=True)
+            await update.message.reply_text(f"❌ 设置失败: {e}")
+        
+        context.user_data['state'] = None
+        return
 
 
 async def _handle_income_query_date(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):

@@ -1,11 +1,90 @@
-import sqlite3
-import os
+"""
+数据库操作模块
+
+职责：
+    提供所有数据库操作的统一接口，包括订单、财务、用户、支付账号等数据的增删改查。
+
+主要功能分区：
+    1. 订单操作 - 订单的创建、查询、更新、状态变更
+    2. 财务数据操作 - 全局和分组财务统计数据的查询和更新
+    3. 日结数据操作 - 按日期和归属ID的日结流量数据
+    4. 收入明细操作 - 收入记录的创建和查询
+    5. 支出明细操作 - 支出记录的创建和查询
+    6. 日切汇总操作 - 每日日切数据的计算和存储
+    7. 用户权限操作 - 授权用户和用户归属映射的管理
+    8. 支付账号操作 - GCASH和PayMaya账号的管理
+    9. 定时播报操作 - 定时播报任务的配置和管理
+    10. 操作历史操作 - 用户操作历史的记录和查询
+
+对外接口（主要函数）：
+    订单操作：
+        - create_order() - 创建订单
+        - get_order_by_chat_id() - 根据chat_id获取订单
+        - update_order_state() - 更新订单状态
+        - get_all_valid_orders() - 获取所有有效订单
+        - get_new_orders_by_date() - 获取指定日期的新增订单
+        - get_completed_orders_by_date() - 获取指定日期的完成订单
+        - get_breach_end_orders_by_date() - 获取指定日期的违约完成订单
+    
+    财务数据操作：
+        - get_financial_data() - 获取全局财务数据
+        - update_financial_data() - 更新全局财务数据
+        - get_grouped_data() - 获取分组财务数据
+        - update_grouped_data() - 更新分组财务数据
+        - get_stats_by_date_range() - 按日期范围获取统计数据
+    
+    收入明细操作：
+        - record_income() - 记录收入
+        - get_income_by_date_range() - 按日期范围查询收入
+        - get_all_interest_by_order_id() - 获取订单的所有利息记录
+    
+    日切汇总操作：
+        - calculate_daily_summary() - 计算日切数据
+        - save_daily_summary() - 保存日切数据
+        - get_daily_summary() - 获取日切数据
+        - get_daily_interest_total() - 获取指定日期的利息总额
+        - get_daily_expenses() - 获取指定日期的开销
+    
+    用户权限操作：
+        - is_user_authorized() - 检查用户是否授权
+        - get_authorized_users() - 获取所有授权用户
+        - add_authorized_user() - 添加授权用户
+        - remove_authorized_user() - 移除授权用户
+    
+    支付账号操作：
+        - get_payment_accounts() - 获取支付账号列表
+        - update_payment_account() - 更新支付账号
+    
+    定时播报操作：
+        - get_active_scheduled_broadcasts() - 获取激活的定时播报
+        - save_scheduled_broadcast() - 保存定时播报配置
+    
+    操作历史操作：
+        - record_operation() - 记录操作历史
+        - get_last_operation() - 获取最后一次操作
+        - mark_operation_undone() - 标记操作为已撤销
+
+数据库文件：
+    - 路径：由环境变量 DATA_DIR 指定，默认为模块所在目录
+    - 文件名：loan_bot.db
+    - 初始化：通过 init_db.py 脚本初始化表结构
+
+注意事项：
+    - 所有数据库操作都是异步的，使用装饰器 @db_transaction 或 @db_query
+    - 事务操作会自动提交，查询操作只读不提交
+    - 所有函数都返回字典或列表，便于后续处理
+"""
+# 标准库
 import asyncio
 import json
+import os
+import sqlite3
 from datetime import datetime
-import pytz
-from typing import Optional, Dict, List, Tuple, Any
 from functools import wraps
+from typing import Optional, Dict, List, Tuple, Any
+
+# 第三方库
+import pytz
 
 # 数据库文件路径
 DATA_DIR = os.getenv('DATA_DIR', os.path.dirname(os.path.abspath(__file__)))
@@ -952,6 +1031,190 @@ def toggle_scheduled_broadcast(conn, cursor, slot: int, is_active: int) -> bool:
     SET is_active = ?, updated_at = CURRENT_TIMESTAMP
     WHERE slot = ?
     ''', (is_active, slot))
+    return cursor.rowcount > 0
+
+# ========== 群组消息配置操作 ==========
+
+
+@db_query
+def get_group_message_configs(conn, cursor) -> List[Dict]:
+    """获取所有激活的群组消息配置"""
+    cursor.execute(
+        'SELECT * FROM group_message_config WHERE is_active = 1 ORDER BY chat_id')
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+@db_query
+def get_group_message_config_by_chat_id(conn, cursor, chat_id: int) -> Optional[Dict]:
+    """根据chat_id获取群组消息配置"""
+    cursor.execute(
+        'SELECT * FROM group_message_config WHERE chat_id = ?', (chat_id,))
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+@db_transaction
+def save_group_message_config(conn, cursor, chat_id: int, chat_title: Optional[str] = None,
+                              start_work_message: Optional[str] = None,
+                              end_work_message: Optional[str] = None,
+                              welcome_message: Optional[str] = None,
+                              is_active: int = 1) -> bool:
+    """保存或更新群组消息配置"""
+    # 检查是否已存在
+    cursor.execute(
+        'SELECT * FROM group_message_config WHERE chat_id = ?', (chat_id,))
+    row = cursor.fetchone()
+
+    if row:
+        # 更新现有记录
+        updates = []
+        params = []
+
+        if chat_title is not None:
+            updates.append('chat_title = ?')
+            params.append(chat_title)
+
+        if start_work_message is not None:
+            updates.append('start_work_message = ?')
+            params.append(start_work_message)
+
+        if end_work_message is not None:
+            updates.append('end_work_message = ?')
+            params.append(end_work_message)
+
+        if welcome_message is not None:
+            updates.append('welcome_message = ?')
+            params.append(welcome_message)
+
+        if is_active is not None:
+            updates.append('is_active = ?')
+            params.append(is_active)
+
+        if not updates:
+            return False
+
+        updates.append('updated_at = CURRENT_TIMESTAMP')
+        params.append(chat_id)
+
+        cursor.execute(f'''
+        UPDATE group_message_config 
+        SET {', '.join(updates)}
+        WHERE chat_id = ?
+        ''', params)
+        return cursor.rowcount > 0
+    else:
+        # 创建新记录
+        cursor.execute('''
+        INSERT INTO group_message_config (
+            chat_id, chat_title, start_work_message, end_work_message, 
+            welcome_message, is_active
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ''', (chat_id, chat_title or '', start_work_message or '',
+              end_work_message or '', welcome_message or '', is_active))
+        return True
+
+
+@db_transaction
+def delete_group_message_config(conn, cursor, chat_id: int) -> bool:
+    """删除群组消息配置"""
+    cursor.execute('DELETE FROM group_message_config WHERE chat_id = ?', (chat_id,))
+    return cursor.rowcount > 0
+
+# ========== 公司公告操作 ==========
+
+
+@db_query
+def get_company_announcements(conn, cursor) -> List[Dict]:
+    """获取所有激活的公司公告"""
+    cursor.execute(
+        'SELECT * FROM company_announcements WHERE is_active = 1 ORDER BY id')
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+@db_query
+def get_all_company_announcements(conn, cursor) -> List[Dict]:
+    """获取所有公司公告（包括未激活的）"""
+    cursor.execute('SELECT * FROM company_announcements ORDER BY id')
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+@db_transaction
+def save_company_announcement(conn, cursor, message: str, is_active: int = 1) -> int:
+    """保存公司公告，返回公告ID"""
+    cursor.execute('''
+    INSERT INTO company_announcements (message, is_active)
+    VALUES (?, ?)
+    ''', (message, is_active))
+    return cursor.lastrowid
+
+
+@db_transaction
+def delete_company_announcement(conn, cursor, announcement_id: int) -> bool:
+    """删除公司公告"""
+    cursor.execute('DELETE FROM company_announcements WHERE id = ?', (announcement_id,))
+    return cursor.rowcount > 0
+
+
+@db_transaction
+def toggle_company_announcement(conn, cursor, announcement_id: int, is_active: int) -> bool:
+    """切换公司公告的激活状态"""
+    cursor.execute('''
+    UPDATE company_announcements 
+    SET is_active = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+    ''', (is_active, announcement_id))
+    return cursor.rowcount > 0
+
+# ========== 公告发送计划操作 ==========
+
+
+@db_query
+def get_announcement_schedule(conn, cursor) -> Optional[Dict]:
+    """获取公告发送计划配置"""
+    cursor.execute('SELECT * FROM announcement_schedule WHERE id = 1')
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+@db_transaction
+def save_announcement_schedule(conn, cursor, interval_hours: int = 3, is_active: int = 1) -> bool:
+    """保存公告发送计划配置"""
+    cursor.execute('SELECT * FROM announcement_schedule WHERE id = 1')
+    row = cursor.fetchone()
+
+    if row:
+        # 更新
+        cursor.execute('''
+        UPDATE announcement_schedule 
+        SET interval_hours = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = 1
+        ''', (interval_hours, is_active))
+        return cursor.rowcount > 0
+    else:
+        # 创建
+        cursor.execute('''
+        INSERT INTO announcement_schedule (id, interval_hours, is_active)
+        VALUES (1, ?, ?)
+        ''', (interval_hours, is_active))
+        return True
+
+
+@db_transaction
+def update_announcement_last_sent(conn, cursor) -> bool:
+    """更新公告最后发送时间"""
+    from datetime import datetime
+    import pytz
+    tz = pytz.timezone('Asia/Shanghai')
+    now = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+    
+    cursor.execute('''
+    UPDATE announcement_schedule 
+    SET last_sent_at = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = 1
+    ''', (now,))
     return cursor.rowcount > 0
 
 # ========== 收入明细操作 ==========

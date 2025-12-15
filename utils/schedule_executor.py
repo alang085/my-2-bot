@@ -1,10 +1,15 @@
 """定时播报执行器"""
-import logging
+# 标准库
 import asyncio
+import logging
 from datetime import datetime, time as dt_time
+
+# 第三方库
+import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-import pytz
+
+# 本地模块
 import db_operations
 
 # 北京时区
@@ -140,4 +145,211 @@ async def setup_daily_report(bot):
         logger.info("已设置日切报表任务: 每天 23:05 自动发送")
     except Exception as e:
         logger.error(f"设置日切报表任务失败: {e}", exc_info=True)
+
+
+async def send_start_work_messages(bot):
+    """发送开工信息到所有配置的总群"""
+    try:
+        configs = await db_operations.get_group_message_configs()
+        
+        if not configs:
+            logger.info("没有配置的总群，跳过发送开工信息")
+            return
+        
+        success_count = 0
+        fail_count = 0
+        
+        for config in configs:
+            chat_id = config.get('chat_id')
+            message = config.get('start_work_message')
+            
+            if not chat_id or not message:
+                continue
+            
+            try:
+                await bot.send_message(chat_id=chat_id, text=message)
+                success_count += 1
+                logger.info(f"开工信息已发送到群组 {chat_id}")
+            except Exception as e:
+                fail_count += 1
+                logger.error(f"发送开工信息到群组 {chat_id} 失败: {e}", exc_info=True)
+        
+        logger.info(f"开工信息发送完成: 成功 {success_count}, 失败 {fail_count}")
+    except Exception as e:
+        logger.error(f"发送开工信息失败: {e}", exc_info=True)
+
+
+async def setup_start_work_schedule(bot):
+    """设置开工信息定时任务（每天11:00执行）"""
+    global scheduler
+    
+    if scheduler is None:
+        scheduler = AsyncIOScheduler()
+        scheduler.start()
+    
+    try:
+        scheduler.add_job(
+            send_start_work_messages,
+            trigger=CronTrigger(hour=11, minute=0, timezone=BEIJING_TZ),
+            args=[bot],
+            id="start_work_messages",
+            replace_existing=True
+        )
+        logger.info("已设置开工信息任务: 每天 11:00 自动发送")
+    except Exception as e:
+        logger.error(f"设置开工信息任务失败: {e}", exc_info=True)
+
+
+async def send_end_work_messages(bot):
+    """发送收工信息到所有配置的总群"""
+    try:
+        configs = await db_operations.get_group_message_configs()
+        
+        if not configs:
+            logger.info("没有配置的总群，跳过发送收工信息")
+            return
+        
+        success_count = 0
+        fail_count = 0
+        
+        for config in configs:
+            chat_id = config.get('chat_id')
+            message = config.get('end_work_message')
+            
+            if not chat_id or not message:
+                continue
+            
+            try:
+                await bot.send_message(chat_id=chat_id, text=message)
+                success_count += 1
+                logger.info(f"收工信息已发送到群组 {chat_id}")
+            except Exception as e:
+                fail_count += 1
+                logger.error(f"发送收工信息到群组 {chat_id} 失败: {e}", exc_info=True)
+        
+        logger.info(f"收工信息发送完成: 成功 {success_count}, 失败 {fail_count}")
+    except Exception as e:
+        logger.error(f"发送收工信息失败: {e}", exc_info=True)
+
+
+async def setup_end_work_schedule(bot):
+    """设置收工信息定时任务（每天23:00执行）"""
+    global scheduler
+    
+    if scheduler is None:
+        scheduler = AsyncIOScheduler()
+        scheduler.start()
+    
+    try:
+        scheduler.add_job(
+            send_end_work_messages,
+            trigger=CronTrigger(hour=23, minute=0, timezone=BEIJING_TZ),
+            args=[bot],
+            id="end_work_messages",
+            replace_existing=True
+        )
+        logger.info("已设置收工信息任务: 每天 23:00 自动发送")
+    except Exception as e:
+        logger.error(f"设置收工信息任务失败: {e}", exc_info=True)
+
+
+async def send_random_announcements(bot):
+    """随机发送公司公告到所有配置的总群"""
+    try:
+        import random
+        from datetime import datetime, timedelta
+        import pytz
+        
+        # 检查发送计划配置
+        schedule = await db_operations.get_announcement_schedule()
+        if not schedule or not schedule.get('is_active'):
+            logger.info("公告发送功能未激活，跳过发送")
+            return
+        
+        # 检查发送间隔
+        last_sent_at = schedule.get('last_sent_at')
+        interval_hours = schedule.get('interval_hours', 3)
+        
+        if last_sent_at:
+            tz = pytz.timezone('Asia/Shanghai')
+            last_sent = datetime.strptime(last_sent_at, '%Y-%m-%d %H:%M:%S')
+            last_sent = tz.localize(last_sent)
+            now = datetime.now(tz)
+            
+            if (now - last_sent).total_seconds() < interval_hours * 3600:
+                logger.info(f"距离上次发送不足 {interval_hours} 小时，跳过发送")
+                return
+        
+        # 获取激活的公告列表
+        announcements = await db_operations.get_company_announcements()
+        
+        if not announcements:
+            logger.info("没有激活的公告，跳过发送")
+            return
+        
+        # 随机选择一条公告
+        selected_announcement = random.choice(announcements)
+        message = selected_announcement.get('message')
+        
+        if not message:
+            logger.warning("选中的公告消息为空，跳过发送")
+            return
+        
+        # 获取所有配置的总群
+        configs = await db_operations.get_group_message_configs()
+        
+        if not configs:
+            logger.info("没有配置的总群，跳过发送公告")
+            return
+        
+        success_count = 0
+        fail_count = 0
+        
+        for config in configs:
+            chat_id = config.get('chat_id')
+            
+            if not chat_id:
+                continue
+            
+            try:
+                await bot.send_message(chat_id=chat_id, text=message)
+                success_count += 1
+                logger.info(f"公司公告已发送到群组 {chat_id}")
+            except Exception as e:
+                fail_count += 1
+                logger.error(f"发送公司公告到群组 {chat_id} 失败: {e}", exc_info=True)
+        
+        # 更新最后发送时间
+        await db_operations.update_announcement_last_sent()
+        
+        logger.info(f"公司公告发送完成: 成功 {success_count}, 失败 {fail_count}")
+    except Exception as e:
+        logger.error(f"发送公司公告失败: {e}", exc_info=True)
+
+
+async def setup_announcement_schedule(bot):
+    """设置公告定时任务（按配置的间隔执行）"""
+    global scheduler
+    
+    if scheduler is None:
+        scheduler = AsyncIOScheduler()
+        scheduler.start()
+    
+    try:
+        from apscheduler.triggers.interval import IntervalTrigger
+        
+        # 获取配置的间隔
+        schedule = await db_operations.get_announcement_schedule()
+        interval_hours = schedule.get('interval_hours', 3) if schedule else 3
+        
+        scheduler.add_job(
+            send_random_announcements,
+            trigger=IntervalTrigger(hours=interval_hours),
+            args=[bot],
+            id="random_announcements",
+            replace_existing=True
+        )
+        logger.info(f"已设置公司公告任务: 每 {interval_hours} 小时自动发送")
+    except Exception as e:
+        logger.error(f"设置公司公告任务失败: {e}", exc_info=True)
 

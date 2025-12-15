@@ -249,6 +249,51 @@ def init_database():
     )
     ''')
 
+    # 创建群组消息配置表（总群/总频道配置）
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS group_message_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id INTEGER NOT NULL UNIQUE,
+        chat_title TEXT,
+        start_work_message TEXT,
+        end_work_message TEXT,
+        welcome_message TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # 创建公司公告表
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS company_announcements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # 创建公告发送计划表（全局配置，只有一条记录）
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS announcement_schedule (
+        id INTEGER PRIMARY KEY DEFAULT 1 CHECK(id = 1),
+        interval_hours INTEGER DEFAULT 3,
+        is_active INTEGER DEFAULT 1,
+        last_sent_at TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    
+    # 初始化公告发送计划表（如果不存在记录）
+    cursor.execute('SELECT COUNT(*) FROM announcement_schedule')
+    if cursor.fetchone()[0] == 0:
+        cursor.execute('''
+        INSERT INTO announcement_schedule (id, interval_hours, is_active)
+        VALUES (1, 3, 1)
+        ''')
+
     # 创建开销记录表
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS expense_records (
@@ -290,7 +335,7 @@ def init_database():
         is_undone INTEGER DEFAULT 0
     )
     ''')
-
+    
     # 创建日切数据汇总表
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS daily_summary (

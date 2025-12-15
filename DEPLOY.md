@@ -124,3 +124,121 @@ git commit -m "Update code"
 git push
 ```
 
+## 🔄 从旧容器迁移数据（无Git仓库绑定）
+
+如果旧版本部署是独立的容器（没有绑定Git仓库），迁移数据到新仓库部署的方法：
+
+### 快速步骤
+
+1. **备份旧数据**：在Zeabur Dashboard中找到旧容器的Volume，下载 `/data/loan_bot.db` 文件
+2. **部署新版本**：创建新项目，配置Volume（`/data`）和环境变量
+3. **上传数据库文件**：将下载的 `loan_bot.db` 上传到新项目的Volume `/data` 目录
+4. **验证运行**：启动容器，检查日志并测试功能
+
+### 详细步骤
+
+请参考 **[DATA_MIGRATION.md](DATA_MIGRATION.md)** 文档，包含：
+- 详细的下载和上传步骤
+- 多种操作方法（Dashboard、终端、SSH）
+- 验证和故障排查指南
+- 注意事项和最佳实践
+
+**优点**：
+- 最简单直接，保留完整数据库状态
+- 不需要额外的转换步骤
+- 迁移后立即可用
+
+**注意事项**：
+- 确保两个部署使用相同的Volume挂载路径（`/data`）
+- 确保新容器启动时能访问到Volume中的数据库文件
+- 数据库Schema会自动迁移（使用 `CREATE TABLE IF NOT EXISTS` 和字段检查逻辑）
+
+## 🧪 本地测试
+
+### 1. 环境准备
+
+```bash
+# 检查Python版本（需要3.11）
+python --version
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 配置环境变量（或创建user_config.py）
+# Windows PowerShell:
+$env:BOT_TOKEN="你的机器人Token"
+$env:ADMIN_USER_IDS="你的用户ID"
+
+# Linux/Mac:
+export BOT_TOKEN="你的机器人Token"
+export ADMIN_USER_IDS="你的用户ID"
+```
+
+### 2. 数据库初始化
+
+```bash
+python init_db.py
+```
+
+这会创建 `loan_bot.db` 数据库文件（如果不存在）并初始化所有表结构。
+
+### 3. 启动机器人
+
+```bash
+python main.py
+```
+
+机器人启动后，在Telegram中测试基本功能：
+- 发送 `/start` 查看帮助信息
+- 测试创建订单功能
+- 测试查询报表功能
+
+### 4. Docker本地测试（可选）
+
+```bash
+# 构建Docker镜像
+docker build -t loan-bot .
+
+# 运行容器（使用环境变量）
+docker run --rm \
+  -e BOT_TOKEN="你的机器人Token" \
+  -e ADMIN_USER_IDS="你的用户ID" \
+  -e DATA_DIR=/data \
+  -v $(pwd)/data:/data \
+  loan-bot
+
+# 或者使用.env文件
+docker run --rm --env-file .env -v $(pwd)/data:/data loan-bot
+```
+
+## 🔄 容器更新兼容性
+
+### 数据库迁移机制
+
+项目使用 `CREATE TABLE IF NOT EXISTS` 和字段检查逻辑，确保容器更新时：
+
+- ✅ 现有表不会被覆盖
+- ✅ 新字段会自动添加（如果缺失）
+- ✅ 索引会自动创建（如果不存在）
+- ✅ 现有数据不会丢失
+
+### 更新流程
+
+1. **备份数据**（推荐）
+   - 使用 `/backup` 命令（如果已实现）
+   - 或直接从Volume下载数据库文件
+
+2. **部署新版本**
+   - Zeabur会自动停止旧容器，启动新容器
+   - 新容器启动时会运行 `init_db.init_database()`
+   - 自动执行Schema迁移（只添加新字段，不删除现有字段）
+
+3. **验证运行**
+   - 检查日志确认数据库初始化成功
+   - 测试基本功能（创建订单、查询报表等）
+
+### 注意事项
+
+- **Volume配置必须正确**：确保Volume挂载到 `/data`，环境变量 `DATA_DIR=/data`
+- **向后兼容**：如果新版本有破坏性变更（删除字段、修改字段类型），需要额外的迁移脚本
+

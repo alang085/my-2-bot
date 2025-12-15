@@ -25,11 +25,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 复制依赖文件
 COPY requirements.txt .
 
-# 安装 Python 依赖
+# 安装 Python 依赖（先复制依赖文件，利用Docker缓存）
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# 复制项目文件
+# 复制项目文件（放在依赖安装之后，代码变更不会影响依赖层缓存）
 COPY . .
 
 # 创建数据目录
