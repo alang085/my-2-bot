@@ -1281,7 +1281,37 @@ async def _handle_report_query(update: Update, context: ContextTypes.DEFAULT_TYP
             ]
         ]
 
-        await update.message.reply_text(report_text, reply_markup=InlineKeyboardMarkup(keyboard))
+        # Telegram消息最大长度限制为4096字符，如果报表太长则分段发送
+        MAX_MESSAGE_LENGTH = 4096
+        if len(report_text) > MAX_MESSAGE_LENGTH:
+            # 分段发送
+            chunks = []
+            current_chunk = ""
+            for line in report_text.split('\n'):
+                if len(current_chunk) + len(line) + 1 > MAX_MESSAGE_LENGTH - 200:  # 留200字符余量
+                    if current_chunk:
+                        chunks.append(current_chunk)
+                    current_chunk = line + '\n'
+                else:
+                    current_chunk += line + '\n'
+            if current_chunk:
+                chunks.append(current_chunk)
+            
+            # 发送第一段（带按钮）
+            if chunks:
+                first_chunk = chunks[0]
+                if len(chunks) > 1:
+                    first_chunk += f"\n\n⚠️ 报表内容较长，已分段显示 ({len(chunks)}段)"
+                await update.message.reply_text(
+                    first_chunk,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                
+                # 发送剩余段
+                for i, chunk in enumerate(chunks[1:], 2):
+                    await update.message.reply_text(f"[第 {i}/{len(chunks)} 段]\n\n{chunk}")
+        else:
+            await update.message.reply_text(report_text, reply_markup=InlineKeyboardMarkup(keyboard))
         context.user_data['state'] = None
 
     except ValueError:

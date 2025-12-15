@@ -80,6 +80,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_search_callback(update, context)
     elif data.startswith("payment_"):
         await handle_payment_callback(update, context)
+    elif data.startswith("merge_incremental_"):
+        from callbacks.incremental_merge_callbacks import handle_incremental_merge_callback
+        await handle_incremental_merge_callback(update, context)
     elif data == "broadcast_start":
         locked_groups = context.user_data.get('locked_groups', [])
         if not locked_groups:

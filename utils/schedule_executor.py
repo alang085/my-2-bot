@@ -11,6 +11,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 # 本地模块
 import db_operations
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # 北京时区
 BEIJING_TZ = pytz.timezone('Asia/Shanghai')
@@ -83,11 +84,11 @@ async def reload_scheduled_broadcasts(bot):
 
 
 async def send_daily_report(bot):
-    """发送日切报表给所有管理员"""
+    """发送日切报表Excel文件给所有管理员（每天生成两个Excel：订单总表和每日变化数据）"""
     try:
-        from utils.daily_report_generator import generate_daily_report
         from utils.date_helpers import get_daily_period_date
         from config import ADMIN_IDS
+        import db_operations
         
         # 获取日切日期（使用get_daily_period_date，因为日切是在23:00后）
         # 如果当前时间在23:00之后，get_daily_period_date会返回明天的日期
@@ -105,24 +106,94 @@ async def send_daily_report(bot):
             yesterday = now - timedelta(days=1)
             report_date = yesterday.strftime("%Y-%m-%d")
         
-        # 生成日切报表
-        report = await generate_daily_report(report_date)
+        logger.info(f"开始生成每日Excel报表 ({report_date})")
+        
+        # 1. 生成订单总表Excel
+        try:
+            from utils.excel_export import export_orders_to_excel
+            
+            # 获取所有有效订单
+            valid_orders = await db_operations.get_all_valid_orders()
+            
+            # 获取当日利息总额
+            daily_interest = await db_operations.get_daily_interest_total(report_date)
+            
+            # 获取当日完成的订单
+            completed_orders = await db_operations.get_completed_orders_by_date(report_date)
+            
+            # 获取当日违约完成的订单
+            breach_end_orders = await db_operations.get_breach_end_orders_by_date(report_date)
+            
+            # 获取日切数据
+            daily_summary = await db_operations.get_daily_summary(report_date)
+            
+            # 导出订单总表Excel
+            orders_excel_path = await export_orders_to_excel(
+                valid_orders,
+                completed_orders,
+                breach_end_orders,
+                daily_interest,
+                daily_summary
+            )
+            logger.info(f"订单总表Excel已生成: {orders_excel_path}")
+        except Exception as e:
+            logger.error(f"生成订单总表Excel失败: {e}", exc_info=True)
+            orders_excel_path = None
+        
+        # 2. 生成每日变化数据Excel
+        try:
+            from utils.excel_export import export_daily_changes_to_excel
+            
+            # 导出每日变化数据Excel
+            changes_excel_path = await export_daily_changes_to_excel(report_date)
+            logger.info(f"每日变化数据Excel已生成: {changes_excel_path}")
+        except Exception as e:
+            logger.error(f"生成每日变化数据Excel失败: {e}", exc_info=True)
+            changes_excel_path = None
         
         # 发送给所有管理员
         success_count = 0
         fail_count = 0
         for admin_id in ADMIN_IDS:
             try:
-                await bot.send_message(chat_id=admin_id, text=report)
+                # 发送订单总表Excel
+                if orders_excel_path:
+                    with open(orders_excel_path, 'rb') as f:
+                        await bot.send_document(
+                            chat_id=admin_id,
+                            document=f,
+                            filename=f"订单总表_{report_date}.xlsx",
+                            caption=f"📊 订单总表 ({report_date})\n\n包含所有有效订单及利息记录"
+                        )
+                
+                # 发送每日变化数据Excel
+                if changes_excel_path:
+                    with open(changes_excel_path, 'rb') as f:
+                        await bot.send_document(
+                            chat_id=admin_id,
+                            document=f,
+                            filename=f"每日变化数据_{report_date}.xlsx",
+                            caption=f"📈 每日变化数据 ({report_date})\n\n包含：\n• 新增订单\n• 完成订单\n• 违约完成订单\n• 收入明细（利息等）\n• 开销明细\n• 数据汇总"
+                        )
+                
                 success_count += 1
-                logger.info(f"日切报表已发送给管理员 {admin_id}")
+                logger.info(f"每日Excel报表已发送给管理员 {admin_id}")
             except Exception as e:
                 fail_count += 1
-                logger.error(f"发送日切报表给管理员 {admin_id} 失败: {e}", exc_info=True)
+                logger.error(f"发送每日Excel报表给管理员 {admin_id} 失败: {e}", exc_info=True)
         
-        logger.info(f"日切报表发送完成: 成功 {success_count}, 失败 {fail_count}")
+        # 清理临时文件
+        import os
+        for file_path in [orders_excel_path, changes_excel_path]:
+            if file_path:
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    logger.warning(f"删除临时文件失败 {file_path}: {e}")
+        
+        logger.info(f"每日Excel报表发送完成: 成功 {success_count}, 失败 {fail_count}")
     except Exception as e:
-        logger.error(f"发送日切报表失败: {e}", exc_info=True)
+        logger.error(f"发送每日Excel报表失败: {e}", exc_info=True)
 
 
 async def setup_daily_report(bot):
@@ -352,4 +423,138 @@ async def setup_announcement_schedule(bot):
         logger.info(f"已设置公司公告任务: 每 {interval_hours} 小时自动发送")
     except Exception as e:
         logger.error(f"设置公司公告任务失败: {e}", exc_info=True)
+
+
+async def send_incremental_orders_report(bot):
+    """发送增量订单报表（每天11:05执行）"""
+    try:
+        from utils.incremental_report_generator import (
+            get_or_create_baseline_date,
+            prepare_incremental_data
+        )
+        from utils.excel_export import export_incremental_orders_report_to_excel
+        from config import ADMIN_IDS
+        
+        # 获取或创建基准日期
+        baseline_date = await get_or_create_baseline_date()
+        current_date = datetime.now(BEIJING_TZ).strftime('%Y-%m-%d')
+        
+        logger.info(f"开始生成增量订单报表 (基准日期: {baseline_date}, 当前日期: {current_date})")
+        
+        # 准备增量数据
+        incremental_data = await prepare_incremental_data(baseline_date)
+        orders_data = incremental_data.get('orders', [])
+        expense_records = incremental_data.get('expenses', [])
+        
+        if not orders_data and not expense_records:
+            # 没有增量数据，发送提示消息
+            for admin_id in ADMIN_IDS:
+                try:
+                    await bot.send_message(
+                        chat_id=admin_id,
+                        text=f"📊 增量订单报表 ({current_date})\n\n"
+                             f"基准日期: {baseline_date}\n"
+                             f"当前日期: {current_date}\n\n"
+                             f"✅ 无增量数据"
+                    )
+                except Exception as e:
+                    logger.error(f"发送增量报表提示给管理员 {admin_id} 失败: {e}", exc_info=True)
+            return
+        
+        # 生成Excel报表
+        try:
+            excel_path = await export_incremental_orders_report_to_excel(
+                baseline_date,
+                current_date,
+                orders_data,
+                expense_records
+            )
+            logger.info(f"增量订单报表Excel已生成: {excel_path}")
+        except Exception as e:
+            logger.error(f"生成增量订单报表Excel失败: {e}", exc_info=True)
+            excel_path = None
+        
+        # 发送给所有管理员
+        success_count = 0
+        fail_count = 0
+        for admin_id in ADMIN_IDS:
+            try:
+                if excel_path:
+                    # 检查是否已经合并过
+                    merge_record = await db_operations.get_merge_record(current_date)
+                    if merge_record:
+                        # 已经合并过，显示提示
+                        merge_button_text = "⚠️ 已合并（再次合并）"
+                    else:
+                        # 未合并，显示合并按钮
+                        merge_button_text = "✅ 合并到总表"
+                    
+                    keyboard = [[
+                        InlineKeyboardButton(
+                            merge_button_text,
+                            callback_data=f"merge_incremental_{current_date}"
+                        )
+                    ]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    with open(excel_path, 'rb') as f:
+                        await bot.send_document(
+                            chat_id=admin_id,
+                            document=f,
+                            filename=f"增量订单报表_{current_date}.xlsx",
+                            caption=f"📊 增量订单报表 ({current_date})\n\n"
+                                   f"基准日期: {baseline_date}\n"
+                                   f"订单数: {len(orders_data)}\n"
+                                   f"开销记录: {len(expense_records)}\n\n"
+                                   f"💡 提示：点击利息总数列可以展开查看每期利息明细",
+                            reply_markup=reply_markup
+                        )
+                else:
+                    await bot.send_message(
+                        chat_id=admin_id,
+                        text=f"📊 增量订单报表 ({current_date})\n\n"
+                             f"基准日期: {baseline_date}\n"
+                             f"订单数: {len(orders_data)}\n"
+                             f"开销记录: {len(expense_records)}\n\n"
+                             f"❌ Excel生成失败，请查看日志"
+                    )
+                
+                success_count += 1
+                logger.info(f"增量订单报表已发送给管理员 {admin_id}")
+            except Exception as e:
+                fail_count += 1
+                logger.error(f"发送增量订单报表给管理员 {admin_id} 失败: {e}", exc_info=True)
+        
+        # 清理临时文件
+        if excel_path:
+            import os
+            try:
+                os.remove(excel_path)
+            except Exception as e:
+                logger.warning(f"删除临时文件失败 {excel_path}: {e}")
+        
+        logger.info(f"增量订单报表发送完成: 成功 {success_count}, 失败 {fail_count}")
+    except Exception as e:
+        logger.error(f"发送增量订单报表失败: {e}", exc_info=True)
+
+
+async def setup_incremental_orders_report(bot):
+    """设置增量订单报表定时任务（每天11:05执行）"""
+    global scheduler
+    
+    if scheduler is None:
+        scheduler = AsyncIOScheduler()
+        scheduler.start()
+    
+    try:
+        scheduler.add_job(
+            send_incremental_orders_report,
+            trigger=CronTrigger(hour=11, minute=5, timezone=BEIJING_TZ),
+            args=[bot],
+            id="incremental_orders_report",
+            replace_existing=True
+        )
+        logger.info("已设置增量订单报表任务: 每天 11:05 自动发送")
+    except Exception as e:
+        logger.error(f"设置增量订单报表任务失败: {e}", exc_info=True)
 

@@ -9,6 +9,8 @@ from utils.stats_helpers import update_liquid_capital, update_all_stats
 from utils.date_helpers import get_daily_period_date
 from utils.message_helpers import display_search_results_helper
 from decorators import error_handler, admin_required, authorized_required, private_chat_only, group_chat_only
+from utils.incremental_report_generator import get_or_create_baseline_date, prepare_incremental_data
+from utils.incremental_report_merger import preview_incremental_report, merge_incremental_report_to_global
 
 logger = logging.getLogger(__name__)
 
@@ -1177,3 +1179,56 @@ async def customer_contribution(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         logger.error(f"查询客户总贡献时出错: {e}", exc_info=True)
         await update.message.reply_text(f"❌ 查询失败: {str(e)}")
+
+
+@authorized_required
+@private_chat_only
+@error_handler
+async def preview_incremental_report_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """预览增量报表（员工权限）"""
+    try:
+        # 获取基准日期
+        baseline_date = await get_or_create_baseline_date()
+        
+        # 生成预览
+        preview_text = await preview_incremental_report(baseline_date)
+        
+        await update.message.reply_text(preview_text)
+    except Exception as e:
+        logger.error(f"预览增量报表失败: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ 预览失败: {str(e)}")
+
+
+@admin_required
+@private_chat_only
+@error_handler
+async def merge_incremental_report_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """合并增量报表到全局数据"""
+    try:
+        # 获取基准日期
+        baseline_date = await get_or_create_baseline_date()
+        
+        # 准备增量数据
+        incremental_data = await prepare_incremental_data(baseline_date)
+        orders_data = incremental_data.get('orders', [])
+        expense_records = incremental_data.get('expenses', [])
+        
+        if not orders_data and not expense_records:
+            await update.message.reply_text("✅ 无增量数据需要合并")
+            return
+        
+        # 合并到全局数据
+        result = await merge_incremental_report_to_global(orders_data, expense_records)
+        
+        if result['success']:
+            stats = result['stats']
+            message = f"✅ 增量报表已合并到全局数据\n\n"
+            message += f"📦 订单: {stats['new_orders_count']}个, {stats['new_orders_amount']:,.2f}\n"
+            message += f"💰 利息: {stats['interest']:,.2f}\n"
+            message += f"💸 开销: {stats['company_expenses'] + stats['other_expenses']:,.2f}\n"
+            await update.message.reply_text(message)
+        else:
+            await update.message.reply_text(f"❌ {result['message']}")
+    except Exception as e:
+        logger.error(f"合并增量报表失败: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ 合并失败: {str(e)}")

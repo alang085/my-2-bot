@@ -1792,3 +1792,178 @@ def get_recent_operations(conn, cursor, user_id: int, limit: int = 10) -> List[D
         op['operation_data'] = json.loads(op['operation_data'])
         result.append(op)
     return result
+
+# ========== 基准报表操作 ==========
+
+
+@db_query
+def check_baseline_exists(conn, cursor) -> bool:
+    """检查基准日期是否存在"""
+    cursor.execute('SELECT COUNT(*) FROM baseline_report WHERE id = 1')
+    count = cursor.fetchone()[0]
+    return count > 0
+
+
+@db_query
+def get_baseline_date(conn, cursor) -> Optional[str]:
+    """获取基准日期"""
+    cursor.execute('SELECT baseline_date FROM baseline_report WHERE id = 1')
+    row = cursor.fetchone()
+    return row[0] if row else None
+
+
+@db_transaction
+def save_baseline_date(conn, cursor, date: str) -> bool:
+    """保存基准日期（第一次执行时）"""
+    try:
+        # 检查是否已存在
+        cursor.execute('SELECT COUNT(*) FROM baseline_report WHERE id = 1')
+        exists = cursor.fetchone()[0] > 0
+        
+        if exists:
+            # 更新
+            cursor.execute('''
+            UPDATE baseline_report 
+            SET baseline_date = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = 1
+            ''', (date,))
+        else:
+            # 插入
+            cursor.execute('''
+            INSERT INTO baseline_report (id, baseline_date)
+            VALUES (1, ?)
+            ''', (date,))
+        return True
+    except Exception as e:
+        print(f"保存基准日期失败: {e}")
+        return False
+
+
+@db_query
+def get_incremental_orders(conn, cursor, baseline_date: str) -> List[Dict]:
+    """获取基准日期之后的所有订单（创建或更新）"""
+    cursor.execute('''
+    SELECT * FROM orders 
+    WHERE date >= ? OR updated_at >= ?
+    ORDER BY date ASC, order_id ASC
+    ''', (baseline_date, f"{baseline_date} 00:00:00"))
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+@db_query
+def get_incremental_orders_with_details(conn, cursor, baseline_date: str) -> List[Dict]:
+    """获取增量订单及其详细信息"""
+    # 获取增量订单
+    cursor.execute('''
+    SELECT * FROM orders 
+    WHERE date >= ? OR updated_at >= ?
+    ORDER BY date ASC, order_id ASC
+    ''', (baseline_date, f"{baseline_date} 00:00:00"))
+    order_rows = cursor.fetchall()
+    orders = [dict(row) for row in order_rows]
+    
+    result = []
+    for order in orders:
+        order_id = order['order_id']
+        
+        # 获取该订单的所有利息记录（基准日期之后）
+        cursor.execute('''
+        SELECT * FROM income_records 
+        WHERE order_id = ? AND type = 'interest' AND date >= ?
+        ORDER BY date ASC, created_at ASC
+        ''', (order_id, baseline_date))
+        interest_rows = cursor.fetchall()
+        interests = [dict(row) for row in interest_rows]
+        
+        # 获取该订单的本金归还记录（基准日期之后）
+        cursor.execute('''
+        SELECT SUM(amount) as total_principal_reduction
+        FROM income_records 
+        WHERE order_id = ? AND type = 'principal_reduction' AND date >= ?
+        ''', (order_id, baseline_date))
+        principal_row = cursor.fetchone()
+        principal_reduction = principal_row[0] if principal_row and principal_row[0] else 0.0
+        
+        # 计算利息总数
+        total_interest = sum(i['amount'] for i in interests)
+        
+        # 生成备注
+        note_parts = []
+        if order.get('created_at', '')[:10] >= baseline_date:
+            note_parts.append('新订单')
+        if principal_reduction > 0:
+            note_parts.append(f'归还本金 {principal_reduction:.2f}元')
+        if order['state'] == 'end':
+            note_parts.append('订单完成')
+        elif order['state'] == 'breach_end':
+            note_parts.append('违约完成')
+        note = '→'.join(note_parts) if note_parts else ''
+        
+        result.append({
+            **order,
+            'interests': interests,
+            'total_interest': total_interest,
+            'principal_reduction': principal_reduction,
+            'note': note
+        })
+    
+    return result
+
+# ========== 增量报表合并记录操作 ==========
+
+
+@db_query
+def check_merge_record_exists(conn, cursor, merge_date: str) -> bool:
+    """检查指定日期的合并记录是否存在"""
+    cursor.execute('SELECT COUNT(*) FROM incremental_merge_records WHERE merge_date = ?', (merge_date,))
+    count = cursor.fetchone()[0]
+    return count > 0
+
+
+@db_query
+def get_merge_record(conn, cursor, merge_date: str) -> Optional[Dict]:
+    """获取指定日期的合并记录"""
+    cursor.execute('''
+    SELECT * FROM incremental_merge_records 
+    WHERE merge_date = ?
+    ''', (merge_date,))
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+@db_query
+def get_all_merge_records(conn, cursor) -> List[Dict]:
+    """获取所有合并记录"""
+    cursor.execute('''
+    SELECT * FROM incremental_merge_records 
+    ORDER BY merged_at DESC
+    ''')
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+@db_transaction
+def save_merge_record(conn, cursor, merge_date: str, baseline_date: str,
+                     orders_count: int, total_amount: float, total_interest: float,
+                     total_expenses: float, merged_by: Optional[int] = None) -> bool:
+    """保存合并记录"""
+    try:
+        cursor.execute('''
+        INSERT INTO incremental_merge_records 
+        (merge_date, baseline_date, orders_count, total_amount, total_interest, total_expenses, merged_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (merge_date, baseline_date, orders_count, total_amount, total_interest, total_expenses, merged_by))
+        return True
+    except sqlite3.IntegrityError:
+        # 如果记录已存在，更新记录
+        cursor.execute('''
+        UPDATE incremental_merge_records 
+        SET baseline_date = ?, orders_count = ?, total_amount = ?, 
+            total_interest = ?, total_expenses = ?, merged_by = ?, merged_at = CURRENT_TIMESTAMP
+        WHERE merge_date = ?
+        ''', (baseline_date, orders_count, total_amount, total_interest, total_expenses, merged_by, merge_date))
+        return True
+    except Exception as e:
+        print(f"保存合并记录失败: {e}")
+        return False

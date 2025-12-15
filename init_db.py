@@ -354,6 +354,31 @@ def init_database():
     )
     ''')
     
+    # 创建基准报表表（用于11:05增量报表）
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS baseline_report (
+        id INTEGER PRIMARY KEY DEFAULT 1 CHECK(id = 1),
+        baseline_date TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    
+    # 创建增量报表合并记录表（记录已合并的日期）
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS incremental_merge_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        merge_date TEXT NOT NULL UNIQUE,
+        baseline_date TEXT NOT NULL,
+        orders_count INTEGER DEFAULT 0,
+        total_amount REAL DEFAULT 0,
+        total_interest REAL DEFAULT 0,
+        total_expenses REAL DEFAULT 0,
+        merged_by INTEGER,
+        merged_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    
     # 检查并添加 chat_id 字段（如果不存在）- 迁移旧表结构
     cursor.execute("PRAGMA table_info(operation_history)")
     columns = [col[1] for col in cursor.fetchall()]

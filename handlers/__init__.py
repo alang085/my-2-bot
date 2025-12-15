@@ -3,6 +3,7 @@ from .undo_handlers import undo_last_operation
 from .schedule_handlers import show_schedule_menu, handle_schedule_input
 from .order_table_handlers import show_order_table
 from .daily_summary_handlers import show_daily_summary
+from .daily_changes_handlers import show_daily_changes_table
 from .group_message_handlers import (
     manage_group_messages,
     add_group_config,
@@ -135,5 +136,7 @@ __all__ = [
     # 订单总表处理器
     'show_order_table',
     # 日切数据处理器
-    'show_daily_summary'
+    'show_daily_summary',
+    # 每日数据变更表处理器
+    'show_daily_changes_table'
 ]

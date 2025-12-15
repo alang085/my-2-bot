@@ -18,24 +18,47 @@ async def generate_report_text(period_type: str, start_date: str, end_date: str,
     # 获取当前状态数据（资金和有效订单）
     if group_id:
         current_data = await db_operations.get_grouped_data(group_id)
+        if not current_data:
+            current_data = {'valid_orders': 0, 'valid_amount': 0.0, 'liquid_funds': 0.0}
         report_title = f"归属ID {group_id} 的报表"
     else:
         current_data = await db_operations.get_financial_data()
+        if not current_data:
+            current_data = {'valid_orders': 0, 'valid_amount': 0.0, 'liquid_funds': 0.0}
         report_title = "全局报表"
 
     # 获取周期统计数据
     stats = await db_operations.get_stats_by_date_range(
         start_date, end_date, group_id)
+    if not stats:
+        stats = {
+            'liquid_flow': 0.0, 'new_clients': 0, 'new_clients_amount': 0.0,
+            'old_clients': 0, 'old_clients_amount': 0.0, 'interest': 0.0,
+            'completed_orders': 0, 'completed_amount': 0.0,
+            'breach_orders': 0, 'breach_amount': 0.0,
+            'breach_end_orders': 0, 'breach_end_amount': 0.0,
+            'company_expenses': 0.0, 'other_expenses': 0.0
+        }
 
     # 如果按归属ID查询，需要单独获取全局开销数据（开销是全局的，不按归属ID存储）
     if group_id:
-        global_expense_stats = await db_operations.get_stats_by_date_range(
-            start_date, end_date, None)
-        stats['company_expenses'] = global_expense_stats['company_expenses']
-        stats['other_expenses'] = global_expense_stats['other_expenses']
-        # 现金余额使用全局数据
-        global_financial_data = await db_operations.get_financial_data()
-        current_data['liquid_funds'] = global_financial_data['liquid_funds']
+        try:
+            global_expense_stats = await db_operations.get_stats_by_date_range(
+                start_date, end_date, None)
+            if global_expense_stats:
+                stats['company_expenses'] = global_expense_stats.get('company_expenses', 0.0)
+                stats['other_expenses'] = global_expense_stats.get('other_expenses', 0.0)
+            
+            # 现金余额使用全局数据
+            global_financial_data = await db_operations.get_financial_data()
+            if global_financial_data:
+                current_data['liquid_funds'] = global_financial_data.get('liquid_funds', 0.0)
+        except Exception as e:
+            logger.error(f"获取全局数据失败: {e}", exc_info=True)
+            # 使用默认值
+            stats['company_expenses'] = stats.get('company_expenses', 0.0)
+            stats['other_expenses'] = stats.get('other_expenses', 0.0)
+            current_data['liquid_funds'] = current_data.get('liquid_funds', 0.0)
 
     # 格式化时间
     tz = pytz.timezone('Asia/Shanghai')
@@ -45,7 +68,11 @@ async def generate_report_text(period_type: str, start_date: str, end_date: str,
     if period_type == "today":
         period_display = f"今日数据 ({start_date})"
     elif period_type == "month":
-        period_display = f"本月数据 ({start_date[:-3]})"
+        # 安全地截取年月部分
+        try:
+            period_display = f"本月数据 ({start_date[:7] if len(start_date) >= 7 else start_date})"
+        except Exception:
+            period_display = f"本月数据 ({start_date})"
     else:
         period_display = f"区间数据 ({start_date} 至 {end_date})"
 
@@ -54,28 +81,30 @@ async def generate_report_text(period_type: str, start_date: str, end_date: str,
         f"📅 {now}\n"
         f"{'─' * 25}\n"
         f"💰 【当前状态】\n"
-        f"有效订单数: {current_data['valid_orders']}\n"
-        f"有效订单金额: {current_data['valid_amount']:.2f}\n"
+        f"有效订单数: {current_data.get('valid_orders', 0)}\n"
+        f"有效订单金额: {current_data.get('valid_amount', 0.0):.2f}\n"
         f"{'─' * 25}\n"
         f"📈 【{period_display}】\n"
-        f"流动资金: {stats['liquid_flow']:.2f}\n"
-        f"新客户数: {stats['new_clients']}\n"
-        f"新客户金额: {stats['new_clients_amount']:.2f}\n"
-        f"老客户数: {stats['old_clients']}\n"
-        f"老客户金额: {stats['old_clients_amount']:.2f}\n"
-        f"利息收入: {stats['interest']:.2f}\n"
-        f"完成订单数: {stats['completed_orders']}\n"
-        f"完成订单金额: {stats['completed_amount']:.2f}\n"
-        f"违约订单数: {stats['breach_orders']}\n"
-        f"违约订单金额: {stats['breach_amount']:.2f}\n"
-        f"违约完成订单数: {stats['breach_end_orders']}\n"
-        f"违约完成金额: {stats['breach_end_amount']:.2f}\n"
+        f"流动资金: {stats.get('liquid_flow', 0.0):.2f}\n"
+        f"新客户数: {stats.get('new_clients', 0)}\n"
+        f"新客户金额: {stats.get('new_clients_amount', 0.0):.2f}\n"
+        f"老客户数: {stats.get('old_clients', 0)}\n"
+        f"老客户金额: {stats.get('old_clients_amount', 0.0):.2f}\n"
+        f"利息收入: {stats.get('interest', 0.0):.2f}\n"
+        f"完成订单数: {stats.get('completed_orders', 0)}\n"
+        f"完成订单金额: {stats.get('completed_amount', 0.0):.2f}\n"
+        f"违约订单数: {stats.get('breach_orders', 0)}\n"
+        f"违约订单金额: {stats.get('breach_amount', 0.0):.2f}\n"
+        f"违约完成订单数: {stats.get('breach_end_orders', 0)}\n"
+        f"违约完成金额: {stats.get('breach_end_amount', 0.0):.2f}\n"
     )
 
     # 如果是归属报表，添加盈余计算
     # 盈余 = 利息收入 + 违约完成订单金额 - 违约订单金额
     if group_id:
-        surplus = stats['interest'] + stats['breach_end_amount'] - stats['breach_amount']
+        surplus = (stats.get('interest', 0.0) + 
+                   stats.get('breach_end_amount', 0.0) - 
+                   stats.get('breach_amount', 0.0))
         # 格式化显示：添加千分位分隔符和符号
         surplus_str = f"{surplus:,.2f}"
         if surplus > 0:
@@ -90,9 +119,9 @@ async def generate_report_text(period_type: str, start_date: str, end_date: str,
         report += (
             f"{'─' * 25}\n"
             f"💸 【开销与余额】\n"
-            f"公司开销: {stats['company_expenses']:.2f}\n"
-            f"其他开销: {stats['other_expenses']:.2f}\n"
-            f"现金余额: {current_data['liquid_funds']:.2f}\n"
+            f"公司开销: {stats.get('company_expenses', 0.0):.2f}\n"
+            f"其他开销: {stats.get('other_expenses', 0.0):.2f}\n"
+            f"现金余额: {current_data.get('liquid_funds', 0.0):.2f}\n"
         )
 
     return report
@@ -159,7 +188,38 @@ async def show_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🔙 返回", callback_data="report_view_today_ALL")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(report_text, reply_markup=reply_markup)
+    
+    # Telegram消息最大长度限制为4096字符，如果报表太长则分段发送
+    MAX_MESSAGE_LENGTH = 4096
+    if len(report_text) > MAX_MESSAGE_LENGTH:
+        # 分段发送
+        chunks = []
+        current_chunk = ""
+        for line in report_text.split('\n'):
+            if len(current_chunk) + len(line) + 1 > MAX_MESSAGE_LENGTH - 200:  # 留200字符余量
+                if current_chunk:
+                    chunks.append(current_chunk)
+                current_chunk = line + '\n'
+            else:
+                current_chunk += line + '\n'
+        if current_chunk:
+            chunks.append(current_chunk)
+        
+        # 发送第一段（带按钮）
+        if chunks:
+            first_chunk = chunks[0]
+            if len(chunks) > 1:
+                first_chunk += f"\n\n⚠️ 报表内容较长，已分段显示 ({len(chunks)}段)"
+            await update.message.reply_text(
+                first_chunk,
+                reply_markup=reply_markup
+            )
+            
+            # 发送剩余段
+            for i, chunk in enumerate(chunks[1:], 2):
+                await update.message.reply_text(f"[第 {i}/{len(chunks)} 段]\n\n{chunk}")
+    else:
+        await update.message.reply_text(report_text, reply_markup=reply_markup)
 
 
 @error_handler
@@ -211,4 +271,35 @@ async def show_my_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(report_text, reply_markup=reply_markup)
+    
+    # Telegram消息最大长度限制为4096字符，如果报表太长则分段发送
+    MAX_MESSAGE_LENGTH = 4096
+    if len(report_text) > MAX_MESSAGE_LENGTH:
+        # 分段发送
+        chunks = []
+        current_chunk = ""
+        for line in report_text.split('\n'):
+            if len(current_chunk) + len(line) + 1 > MAX_MESSAGE_LENGTH - 200:  # 留200字符余量
+                if current_chunk:
+                    chunks.append(current_chunk)
+                current_chunk = line + '\n'
+            else:
+                current_chunk += line + '\n'
+        if current_chunk:
+            chunks.append(current_chunk)
+        
+        # 发送第一段（带按钮）
+        if chunks:
+            first_chunk = chunks[0]
+            if len(chunks) > 1:
+                first_chunk += f"\n\n⚠️ 报表内容较长，已分段显示 ({len(chunks)}段)"
+            await update.message.reply_text(
+                first_chunk,
+                reply_markup=reply_markup
+            )
+            
+            # 发送剩余段
+            for i, chunk in enumerate(chunks[1:], 2):
+                await update.message.reply_text(f"[第 {i}/{len(chunks)} 段]\n\n{chunk}")
+    else:
+        await update.message.reply_text(report_text, reply_markup=reply_markup)

@@ -111,7 +111,36 @@ git push -u origin main
 
 ---
 
-### 第四步：配置Volume（持久化存储）
+### 第四步：配置环境变量
+
+在Zeabur项目设置的 **"Environment Variables"** 中添加：
+
+**变量1**：
+- **Name**: `BOT_TOKEN`
+- **Value**: `你的机器人Token`
+- **类型**: Secret（推荐，会隐藏显示）
+
+**变量2**：
+- **Name**: `ADMIN_USER_IDS`
+- **Value**: `你的用户ID`（多个用逗号分隔，无空格，例如：`123456789,987654321`）
+- **类型**: Secret（推荐）
+
+**变量3**：
+- **Name**: `DATA_DIR`
+- **Value**: `/data`
+- **类型**: Plain（普通变量）
+
+**获取方式**：
+- `BOT_TOKEN`: 在Telegram搜索 @BotFather → `/mybots` → 选择机器人 → `API Token`
+- `ADMIN_USER_IDS`: 在Telegram搜索 @userinfobot → 发送消息获取ID
+
+**详细步骤**：参考 [ENV_VOLUME_CONFIG.md](ENV_VOLUME_CONFIG.md)
+
+---
+
+### 第五步：配置Volume（持久化存储）
+
+⚠️ **重要**：必须配置Volume，否则数据会在容器重启后丢失！
 
 1. 在新项目设置中找到 **"Storage"** 或 **"Volumes"** 标签页
 2. 点击 **"Add Volume"** 或 **"Create Volume"**
@@ -120,21 +149,7 @@ git push -u origin main
    - **Size**: 1GB（可根据数据大小调整，建议至少500MB）
 4. 保存配置
 
----
-
-### 第五步：配置环境变量
-
-在Zeabur项目设置的 **"Environment Variables"** 中添加：
-
-```env
-BOT_TOKEN=你的机器人Token
-ADMIN_USER_IDS=你的用户ID（多个用逗号分隔，无空格）
-DATA_DIR=/data
-```
-
-**获取方式**：
-- `BOT_TOKEN`: 在Telegram搜索 @BotFather → 发送 `/token`
-- `ADMIN_USER_IDS`: 在Telegram搜索 @userinfobot → 发送消息获取ID
+**详细步骤**：参考 [ENV_VOLUME_CONFIG.md](ENV_VOLUME_CONFIG.md)
 
 ---
 

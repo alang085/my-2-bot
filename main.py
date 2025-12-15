@@ -229,6 +229,15 @@ def main() -> None:
     application.add_handler(CommandHandler("groupmsg_add", add_group_config))
     application.add_handler(CommandHandler("groupmsg_getid", get_group_id))
     application.add_handler(CommandHandler("announcement", manage_announcements))
+    
+    # 增量报表命令（仅管理员）
+    from handlers.command_handlers import preview_incremental_report_cmd, merge_incremental_report_cmd
+    application.add_handler(CommandHandler("preview_incremental", preview_incremental_report_cmd))
+    application.add_handler(CommandHandler("merge_incremental", merge_incremental_report_cmd))
+    
+    # 每日数据变更表命令（仅管理员）
+    from handlers.daily_changes_handlers import show_daily_changes_table
+    application.add_handler(CommandHandler("daily_changes", show_daily_changes_table))
 
     # 订单操作命令（群组，需要授权）
     application.add_handler(CommandHandler(
@@ -361,11 +370,14 @@ def main() -> None:
             from utils.schedule_executor import (
                 setup_start_work_schedule,
                 setup_end_work_schedule,
-                setup_announcement_schedule
+                setup_announcement_schedule,
+                setup_incremental_orders_report
             )
             await setup_start_work_schedule(application.bot)
             await setup_end_work_schedule(application.bot)
             await setup_announcement_schedule(application.bot)
+            # 初始化增量订单报表定时任务（每天11:05发送）
+            await setup_incremental_orders_report(application.bot)
             try:
                 print("群组消息定时任务已初始化")
             except UnicodeEncodeError:
