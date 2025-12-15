@@ -32,7 +32,7 @@ wheels/
 database_backup.sql
 
 # Config
-config.py
+# config.py - 应该提交，只包含配置加载逻辑，不包含敏感信息
 user_config.py
 .env
 .env.local
