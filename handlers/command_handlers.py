@@ -13,16 +13,13 @@ from decorators import (
     group_chat_only,
     private_chat_only,
 )
-from utils.chat_helpers import is_group_chat
-from utils.date_helpers import get_daily_period_date
 from utils.incremental_report_generator import get_or_create_baseline_date, prepare_incremental_data
 from utils.incremental_report_merger import (
     merge_incremental_report_to_global,
     preview_incremental_report,
 )
-from utils.message_helpers import display_search_results_helper
 from utils.order_helpers import try_create_order_from_title
-from utils.stats_helpers import update_all_stats, update_liquid_capital
+from utils.stats_helpers import update_liquid_capital
 
 logger = logging.getLogger(__name__)
 
@@ -608,7 +605,7 @@ async def fix_income_statistics(update: Update, context: ContextTypes.DEFAULT_TY
 
         # 获取当前统计数据
         financial_data = await db_operations.get_financial_data()
-        stats = await db_operations.get_stats_by_date_range("1970-01-01", "2099-12-31", None)
+        await db_operations.get_stats_by_date_range("1970-01-01", "2099-12-31", None)
 
         fixed_items = []
 
@@ -742,7 +739,7 @@ async def find_tail_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 获取所有有效订单（包含所有状态，用于完整分析）
         all_valid_orders = await db_operations.search_orders_advanced({})
-        all_orders_all_states = await db_operations.search_orders_advanced_all_states({})
+        await db_operations.search_orders_advanced_all_states({})
 
         # 计算实际有效金额（从订单表）
         actual_valid_amount = sum(order.get("amount", 0) for order in all_valid_orders)
@@ -979,10 +976,8 @@ async def list_user_group_mappings(update: Update, context: ContextTypes.DEFAULT
 @error_handler
 async def check_mismatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """检查收入明细和统计数据的不一致问题（管理员命令）"""
-    from datetime import datetime
 
     import db_operations
-    from utils.date_helpers import get_daily_period_date
 
     # 获取日期参数（可选），支持日期范围
     start_date = None
@@ -1319,7 +1314,7 @@ async def diagnose_data_inconsistency(update: Update, context: ContextTypes.DEFA
 
         # 3. 获取 financial_data 和 grouped_data 的数据
         financial_data = await db_operations.get_financial_data()
-        all_group_ids = await db_operations.get_all_group_ids()
+        await db_operations.get_all_group_ids()
 
         output_lines.append("💰 【统计数据对比】")
         output_lines.append("")

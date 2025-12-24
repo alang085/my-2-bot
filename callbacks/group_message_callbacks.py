@@ -10,7 +10,6 @@ from telegram.ext import ContextTypes
 # 本地模块
 import db_operations
 from config import ADMIN_IDS
-from decorators import authorized_required
 from utils.callback_helpers import safe_query_reply_text
 
 logger = logging.getLogger(__name__)
@@ -799,7 +798,7 @@ async def handle_group_message_callback(update: Update, context: ContextTypes.DE
 
         # 检查用户是否是管理员
         user_id = query.from_user.id if query.from_user else None
-        is_admin = user_id in ADMIN_IDS if user_id else False
+        user_id in ADMIN_IDS if user_id else False
 
         for msg_item in messages:
             msg_id = msg_item.get("id")

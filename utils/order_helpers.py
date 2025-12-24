@@ -3,20 +3,18 @@
 import logging
 import re
 from datetime import date, datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
 import db_operations
-from constants import HISTORICAL_THRESHOLD_DATE, WEEKDAY_GROUP
+from constants import HISTORICAL_THRESHOLD_DATE
 from utils.chat_helpers import (
-    get_current_group,
     get_weekday_group_from_date,
     is_group_chat,
     reply_in_group,
 )
-from utils.date_helpers import get_daily_period_date
 from utils.message_builders import build_order_creation_message
 from utils.stats_helpers import update_all_stats, update_liquid_capital
 
@@ -189,7 +187,6 @@ async def update_order_state_from_title(
                         current_order_date = datetime.strptime(date_str, "%Y/%m/%d").date()
                     except ValueError:
                         logger.debug(f"无法解析订单日期: {current_date_str}")
-                        pass
 
             # 如果日期不一致，更新订单日期和星期分组
             # 情况1: 当前日期可以解析，且与新日期不一致

@@ -2,13 +2,11 @@
 
 import logging
 from datetime import datetime
-from typing import Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 import db_operations
-from config import ADMIN_IDS
 from decorators import admin_required, error_handler, private_chat_only
 from handlers.undo_handlers import (
     _undo_expense,

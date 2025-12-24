@@ -6,8 +6,6 @@ import os
 from datetime import datetime
 from typing import Dict, List
 
-import pytz
-
 # 第三方库
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -781,7 +779,6 @@ def create_incremental_orders_report_file(
         ws_orders.cell(row=row_idx, column=7, value=state).border = border
         ws_orders.cell(row=row_idx, column=8, value=note).border = border
 
-        main_row_idx = row_idx
 
         # 添加利息明细行（使用分组功能，默认隐藏）
         interests = order.get("interests", [])

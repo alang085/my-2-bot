@@ -51,7 +51,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 其他回调需要授权（管理员或员工）
-    from decorators import authorized_required
 
     # 检查是否是管理员或授权员工
     if not user_id:

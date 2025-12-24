@@ -17,7 +17,6 @@
     python scripts/reset_daily_data_2025_12_22.py
 """
 
-import asyncio
 import os
 import sys
 from pathlib import Path
@@ -28,7 +27,6 @@ sys.path.insert(0, str(project_root))
 
 import logging
 import sqlite3
-from datetime import datetime
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

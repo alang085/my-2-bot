@@ -5,9 +5,6 @@ import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-import db_operations
-from utils.chat_helpers import is_group_chat
-
 logger = logging.getLogger(__name__)
 
 

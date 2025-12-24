@@ -4,7 +4,6 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-import pytz
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
@@ -43,7 +42,6 @@ async def format_income_detail(record: dict) -> str:
                         time_str = time_part[:8]
         except Exception as e:
             logger.warning(f"解析时间失败: {record.get('created_at')}, 错误: {e}")
-            pass
 
     # 获取订单号
     order_id = record.get("order_id") or "无"

@@ -2,8 +2,7 @@
 
 # 标准库
 import logging
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 import pytz
 
@@ -13,7 +12,6 @@ from telegram.ext import ContextTypes
 
 # 本地模块
 import db_operations
-from config import ADMIN_IDS
 from decorators import authorized_required, error_handler, private_chat_only
 
 logger = logging.getLogger(__name__)

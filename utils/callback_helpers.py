@@ -2,8 +2,7 @@
 
 import logging
 
-from telegram import InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes
+from telegram import Update
 
 logger = logging.getLogger(__name__)
 

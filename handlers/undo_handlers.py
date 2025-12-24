@@ -1,6 +1,5 @@
 """撤销操作处理器"""
 
-import asyncio
 import logging
 
 from telegram import Update
@@ -73,7 +72,7 @@ async def undo_last_operation(update: Update, context: ContextTypes.DEFAULT_TYPE
     last_operation = await db_operations.get_last_operation(user_id, chat_id, today_date)
     if not last_operation:
         # 判断是私聊还是群聊
-        is_private = chat_id > 0
+        chat_id > 0
         if is_group:
             await update.message.reply_text(
                 f"❌ No undoable operation in this group chat today ({today_date}).\n\n"
@@ -258,7 +257,7 @@ async def _undo_interest(operation_data: dict) -> bool:
     try:
         amount = operation_data.get("amount", 0)
         group_id = operation_data.get("group_id")
-        date = operation_data.get("date", get_daily_period_date())
+        operation_data.get("date", get_daily_period_date())
 
         # 1. 减少利息收入
         await update_all_stats("interest", -amount, 0, group_id)
@@ -288,7 +287,7 @@ async def _undo_principal_reduction(operation_data: dict) -> bool:
         group_id = operation_data.get("group_id")
         chat_id = operation_data.get("chat_id")
         old_amount = operation_data.get("old_amount")
-        order_id = operation_data.get("order_id")
+        operation_data.get("order_id")
 
         if not chat_id or not old_amount:
             logger.error("撤销本金减少：缺少必要参数")
@@ -408,7 +407,7 @@ async def _undo_order_breach_end(operation_data: dict) -> bool:
         chat_id = operation_data.get("chat_id")
         order_id = operation_data.get("order_id")
         old_state = operation_data.get("old_state")  # 完成前的状态
-        date_str = operation_data.get("date", get_daily_period_date())
+        operation_data.get("date", get_daily_period_date())
 
         if not chat_id or not order_id:
             logger.error("撤销违约完成：缺少必要参数")

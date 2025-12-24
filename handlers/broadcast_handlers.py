@@ -8,7 +8,6 @@ from telegram.ext import ContextTypes
 import db_operations
 from decorators import authorized_required, group_chat_only
 from utils.broadcast_helpers import calculate_next_payment_date, format_broadcast_message
-from utils.chat_helpers import is_group_chat
 
 logger = logging.getLogger(__name__)
 

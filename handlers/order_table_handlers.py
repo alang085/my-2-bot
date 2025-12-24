@@ -9,7 +9,6 @@ from telegram.ext import ContextTypes
 
 # 本地模块
 import db_operations
-from config import ADMIN_IDS
 from decorators import authorized_required, error_handler, private_chat_only
 from utils.date_helpers import get_daily_period_date
 

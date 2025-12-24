@@ -1,7 +1,6 @@
 """定时播报执行器"""
 
 # 标准库
-import asyncio
 import logging
 import random
 from datetime import datetime
@@ -310,7 +309,6 @@ async def send_daily_report(bot):
 
         import db_operations
         from config import ADMIN_IDS
-        from utils.date_helpers import get_daily_period_date
 
         tz = pytz.timezone("Asia/Shanghai")
         now = datetime.now(tz)
@@ -470,7 +468,7 @@ async def setup_daily_report(bot):
 async def send_start_work_messages(bot):
     """发送开工信息到所有配置的总群"""
     try:
-        from config import ADMIN_IDS
+        pass
 
         configs = await db_operations.get_group_message_configs()
 
@@ -552,7 +550,7 @@ async def setup_start_work_schedule(bot):
 async def send_end_work_messages(bot):
     """发送收工信息到所有配置的总群"""
     try:
-        from config import ADMIN_IDS
+        pass
 
         configs = await db_operations.get_group_message_configs()
 
@@ -711,7 +709,6 @@ async def setup_daily_operations_summary(bot):
     """设置每日操作汇总定时任务（已禁用自动发送，仅保留命令查询功能）"""
     # 不再设置定时任务，用户可以通过 /daily_operations 和 /daily_operations_summary 命令查询
     logger.info("每日操作汇总功能：已禁用自动发送，请使用命令查询")
-    pass
 
 
 async def send_random_announcements(bot):
@@ -725,7 +722,7 @@ async def send_random_announcements_internal(bot, skip_check=False):
 
     try:
         import random
-        from datetime import datetime, timedelta
+        from datetime import datetime
 
         import pytz
 

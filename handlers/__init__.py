@@ -1,6 +1,5 @@
 """命令处理器模块 - 统一导出所有处理器函数"""
 
-import os
 import sys
 from pathlib import Path
 
@@ -30,16 +29,6 @@ from .command_handlers import (
 from .daily_changes_handlers import show_daily_changes_table
 from .daily_operations_handlers import show_daily_operations, show_daily_operations_summary
 from .daily_summary_handlers import show_daily_summary
-from .group_message_handlers import (
-    add_group_config,
-    batch_set_messages,
-    get_group_id,
-    manage_announcements,
-    manage_anti_fraud_messages,
-    manage_group_messages,
-    manage_promotion_messages,
-    setup_group_auto,
-)
 from .income_handlers import show_income_detail
 from .message_handlers import handle_new_chat_members, handle_new_chat_title, handle_text_input
 from .order_handlers import set_breach, set_breach_end, set_end, set_normal, set_overdue

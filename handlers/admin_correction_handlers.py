@@ -1,7 +1,6 @@
 """管理员数据修正处理器"""
 
 import logging
-from typing import Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes

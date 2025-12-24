@@ -1,6 +1,5 @@
 """工具函数模块"""
 
-import os
 import sys
 from pathlib import Path
 

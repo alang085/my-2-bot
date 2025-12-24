@@ -10,9 +10,7 @@ from telegram.ext import ContextTypes
 
 # 本地模块
 import db_operations
-from utils.chat_helpers import is_group_chat
 from utils.date_helpers import get_daily_period_date
-from utils.message_helpers import display_search_results_helper
 from utils.order_helpers import try_create_order_from_title, update_order_state_from_title
 from utils.stats_helpers import update_all_stats, update_liquid_capital
 
@@ -1047,7 +1045,6 @@ async def _handle_search_amount_input(
     update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
 ):
     """处理按总有效金额查找输入"""
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     from utils.amount_helpers import distribute_orders_evenly_by_weekday, parse_amount
     from utils.message_helpers import display_search_results_helper
