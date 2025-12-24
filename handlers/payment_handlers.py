@@ -361,7 +361,7 @@ async def balance_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = f"💰 账户总余额（{date_str}）\n\n"
         msg += f"GCash: {gcash_total:,.2f}\n"
         msg += f"PayMaya: {paymaya_total:,.2f}\n"
-        msg += f"─────────────\n"
+        msg += "─────────────\n"
         msg += f"总计: {total:,.2f}\n\n"
         msg += "💡 提示：\n"
         msg += "• 使用 /balance_history 2025-01-15 查看指定日期\n"
@@ -447,7 +447,7 @@ async def balance_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = f"💰 余额统计（{date_str} {weekday}）\n\n"
         msg += f"GCash总计: {gcash_total:,.2f}\n"
         msg += f"PayMaya总计: {paymaya_total:,.2f}\n"
-        msg += f"─────────────\n"
+        msg += "─────────────\n"
         msg += f"总计: {total:,.2f}\n\n"
 
         # 显示每个账户的详细信息
