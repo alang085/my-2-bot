@@ -962,13 +962,13 @@ async def setup_alternating_messages_schedule(bot):
         try:
             scheduler.remove_job("company_promotion_messages")
             logger.info("已移除旧的宣传语录独立任务")
-        except:
+        except Exception:
             pass
 
         try:
             scheduler.remove_job("random_announcements")
             logger.info("已移除旧的公告独立任务")
-        except:
+        except Exception:
             pass
 
         # 添加新的统一任务（每2小时执行一次）

@@ -62,7 +62,7 @@ async def show_order_table(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 删除处理中消息
         try:
             await processing_msg.delete()
-        except:
+        except Exception:
             pass
 
         # 删除临时文件
@@ -70,7 +70,7 @@ async def show_order_table(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             os.remove(file_path)
-        except:
+        except Exception:
             pass
     except Exception as e:
         logger.error(f"显示订单总表失败: {e}", exc_info=True)

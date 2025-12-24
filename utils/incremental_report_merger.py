@@ -175,14 +175,14 @@ async def preview_incremental_report(baseline_date: str) -> str:
         stats = await calculate_incremental_stats(orders_data, expense_records)
 
         # 生成预览文本
-        preview = f"📊 增量报表预览\n"
+        preview = "📊 增量报表预览\n"
         preview += f"{'═' * 40}\n"
         preview += f"基准日期: {baseline_date}\n"
         preview += f"当前日期: {current_date}\n"
         preview += f"{'═' * 40}\n\n"
 
         # 订单统计
-        preview += f"📦 订单统计\n"
+        preview += "📦 订单统计\n"
         preview += f"新增订单数: {stats['new_orders_count']}\n"
         preview += f"新增订单金额: {stats['new_orders_amount']:,.2f}\n"
         preview += f"新客户数: {stats['new_clients_count']}\n"
@@ -191,7 +191,7 @@ async def preview_incremental_report(baseline_date: str) -> str:
         preview += f"老客户金额: {stats['old_clients_amount']:,.2f}\n\n"
 
         # 收入统计
-        preview += f"💰 收入统计\n"
+        preview += "💰 收入统计\n"
         preview += f"利息收入: {stats['interest']:,.2f}\n"
         preview += f"归还本金: {stats['principal_reduction']:,.2f}\n"
         preview += f"完成订单数: {stats['completed_orders_count']}\n"
@@ -200,7 +200,7 @@ async def preview_incremental_report(baseline_date: str) -> str:
         preview += f"违约完成金额: {stats['breach_end_amount']:,.2f}\n\n"
 
         # 开销统计
-        preview += f"💸 开销统计\n"
+        preview += "💸 开销统计\n"
         preview += f"公司开销: {stats['company_expenses']:,.2f}\n"
         preview += f"其他开销: {stats['other_expenses']:,.2f}\n"
         preview += f"总开销: {stats['company_expenses'] + stats['other_expenses']:,.2f}\n\n"

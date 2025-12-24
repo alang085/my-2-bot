@@ -318,7 +318,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 chat = await context.bot.get_chat(chat_id)
                 chat_title = chat.title or "未设置"
-            except:
+            except Exception:
                 chat_title = "未设置"
 
             # 保存配置
@@ -1072,7 +1072,7 @@ async def _handle_search_amount_input(
         if not all_valid_orders:
             try:
                 await processing_msg.delete()
-            except:
+            except Exception:
                 pass
             await update.message.reply_text("❌ 没有找到有效订单")
             context.user_data["state"] = None
@@ -1084,7 +1084,7 @@ async def _handle_search_amount_input(
         if total_valid_amount < target_amount:
             try:
                 await processing_msg.delete()
-            except:
+            except Exception:
                 pass
             await update.message.reply_text(
                 f"❌ 总有效金额不足\n\n"
@@ -1102,7 +1102,7 @@ async def _handle_search_amount_input(
             logger.error(f"分配订单时出错: {e}", exc_info=True)
             try:
                 await processing_msg.delete()
-            except:
+            except Exception:
                 pass
             await update.message.reply_text(f"⚠️ 处理订单时出错: {e}")
             context.user_data["state"] = None
@@ -1111,7 +1111,7 @@ async def _handle_search_amount_input(
         if not selected_orders:
             try:
                 await processing_msg.delete()
-            except:
+            except Exception:
                 pass
             await update.message.reply_text("❌ 无法选择订单，请尝试调整目标金额")
             context.user_data["state"] = None

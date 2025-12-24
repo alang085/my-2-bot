@@ -53,7 +53,7 @@ def parse_datetime_str(datetime_str: str) -> Optional[datetime]:
             try:
                 # 尝试标准ISO格式解析
                 dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
-            except:
+            except Exception:
                 # 清理字符串后解析
                 datetime_str_clean = datetime_str.split(".")[0].split("+")[0].split("Z")[0]
                 dt = datetime.strptime(datetime_str_clean, "%Y-%m-%dT%H:%M:%S")

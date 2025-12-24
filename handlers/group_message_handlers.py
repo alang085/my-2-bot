@@ -84,7 +84,7 @@ async def add_group_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_type = "频道"
             elif chat.type in ["group", "supergroup"]:
                 chat_type = "群组"
-        except:
+        except Exception:
             chat_title = "未设置"
 
         # 保存配置

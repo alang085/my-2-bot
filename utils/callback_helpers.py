@@ -40,7 +40,7 @@ async def safe_reply_text(update: Update, text: str, **kwargs):
         try:
             if update.callback_query:
                 await update.callback_query.answer("⚠️ 操作失败", show_alert=True)
-        except:
+        except Exception:
             pass
         return None
 
@@ -70,6 +70,6 @@ async def safe_query_reply_text(query, text: str, reply_markup=None, **kwargs):
         logger.error(f"通过 query 发送消息失败: {e}", exc_info=True)
         try:
             await query.answer("⚠️ 操作失败", show_alert=True)
-        except:
+        except Exception:
             pass
         return None
