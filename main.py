@@ -177,7 +177,7 @@ def main() -> None:
 
     logger.info(f"机器人启动中... 管理员数量: {len(ADMIN_IDS)}")
     if os.getenv("DEBUG", "0") == "1":
-        print(f"\n机器人启动中...")
+        print("\n机器人启动中...")
         print(f"管理员数量: {len(ADMIN_IDS)}")
 
     # 初始化数据库（如果不存在）
