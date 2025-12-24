@@ -65,7 +65,7 @@ skips = ["B101", "B601"]  # assert_used, shell_injection_subprocess
 
 [tool.flake8]
 max-line-length = 100
-extend-ignore = ["E203", "E501", "W503"]
+extend-ignore = ["E203", "E501", "W503", "F541"]  # F541: f-string without placeholders (style only, not an error)
 exclude = [
     ".git",
     "__pycache__",
