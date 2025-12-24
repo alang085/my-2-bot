@@ -821,8 +821,8 @@ async def send_company_promotion_messages(bot):
 
 async def send_alternating_group_messages(bot):
     """统一的消息发送函数：交替发送公告和宣传语录（确保不同时发送）"""
-    global _last_sent_message_type
-
+    # 注意：_last_sent_message_type 在其他函数中被修改（send_random_announcements_internal, send_company_promotion_messages_internal）
+    # 这里只是读取，所以不需要 global 声明
     try:
         # 根据上次发送的类型决定本次发送哪个
         if _last_sent_message_type == "announcement":

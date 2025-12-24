@@ -1,9 +1,13 @@
 """订单操作回调处理器"""
 
+import logging
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 import db_operations
+
+logger = logging.getLogger(__name__)
 from handlers.attribution_handlers import change_orders_attribution
 from handlers.command_handlers import show_current_order
 from handlers.order_handlers import set_breach, set_breach_end, set_end, set_normal, set_overdue
@@ -136,7 +140,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
     if is_group and action in ["normal", "overdue", "end", "breach", "breach_end"]:
         try:
             await query.delete_message()
-        except:
+        except Exception:
             pass
 
     if action == "normal":
@@ -167,5 +171,5 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
     # 尝试 answer callback，消除加载状态
     try:
         await query.answer()
-    except:
+    except Exception:
         pass

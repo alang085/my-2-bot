@@ -89,7 +89,7 @@ async def handle_group_message_callback(update: Update, context: ContextTypes.DE
         # 先 answer，防止客户端转圈
         try:
             await query.answer()
-        except:
+        except Exception:
             pass
 
         try:
@@ -111,7 +111,7 @@ async def handle_group_message_callback(update: Update, context: ContextTypes.DE
         # 先 answer，防止客户端转圈
         try:
             await query.answer()
-        except:
+        except Exception:
             pass
 
         try:
@@ -302,7 +302,7 @@ async def handle_group_message_callback(update: Update, context: ContextTypes.DE
         logger.info(f"查看所有消息内容: {data}")
         try:
             await query.answer()
-        except:
+        except Exception:
             pass
 
         try:
@@ -381,7 +381,7 @@ async def handle_group_message_callback(update: Update, context: ContextTypes.DE
         # 批量设置：选择群组
         try:
             await query.answer()
-        except:
+        except Exception:
             pass
 
         try:
@@ -410,7 +410,7 @@ async def handle_group_message_callback(update: Update, context: ContextTypes.DE
 
             try:
                 await query.edit_message_text(message_text)
-            except:
+            except Exception:
                 await safe_query_reply_text(query, message_text)
 
             context.user_data["state"] = "BATCH_SETTING_MESSAGES"
@@ -426,7 +426,7 @@ async def handle_group_message_callback(update: Update, context: ContextTypes.DE
         try:
             await query.answer("已取消")
             await query.edit_message_text("❌ 已取消批量设置")
-        except:
+        except Exception:
             pass
         context.user_data.pop("batch_setting_chat_id", None)
         context.user_data.pop("batch_setting_step", None)

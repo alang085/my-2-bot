@@ -15,6 +15,44 @@ from utils.date_helpers import get_daily_period_date
 logger = logging.getLogger(__name__)
 
 
+# Mock classes for testing/exporting
+class MockMessage:
+    """模拟 Message 对象，用于回调中调用需要 Update 的函数"""
+
+    def __init__(self, original_message, bot):
+        self.chat_id = original_message.chat_id
+        self.message_id = original_message.message_id
+        self._bot = bot
+        self._original_message = original_message
+
+    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+        return await self._bot.send_message(
+            chat_id=self.chat_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+        )
+
+    async def reply_document(
+        self, document, filename=None, caption=None, reply_markup=None
+    ):
+        return await self._bot.send_document(
+            chat_id=self.chat_id,
+            document=document,
+            filename=filename,
+            caption=caption,
+            reply_markup=reply_markup,
+        )
+
+
+class MockUpdate:
+    """模拟 Update 对象，用于回调中调用需要 Update 的函数"""
+
+    def __init__(self, query, bot):
+        self.effective_user = query.from_user
+        self.message = MockMessage(query.message, bot)
+
+
 async def _check_expense_permission(user_id: int) -> bool:
     """检查用户是否有权限录入开销（异步版本）"""
     if not user_id:
@@ -175,7 +213,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
                 logger.error(f"发送消息失败: {e}", exc_info=True)
                 try:
                     await query.answer("❌ 显示失败", show_alert=True)
-                except:
+                except Exception:
                     pass
         return
 
@@ -328,7 +366,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
                 logger.error(f"发送消息失败: {e}", exc_info=True)
                 try:
                     await query.answer("❌ 显示失败", show_alert=True)
-                except:
+                except Exception:
                     pass
         return
 
@@ -1382,38 +1420,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer()
         from handlers.order_table_handlers import show_order_table
 
-        # 创建一个模拟的update对象来调用show_order_table
-        class MockMessage:
-            def __init__(self, original_message, bot):
-                self.chat_id = original_message.chat_id
-                self.message_id = original_message.message_id
-                self._bot = bot
-                self._original_message = original_message
-
-            async def reply_text(self, text, reply_markup=None, parse_mode=None):
-                return await self._bot.send_message(
-                    chat_id=self.chat_id,
-                    text=text,
-                    reply_markup=reply_markup,
-                    parse_mode=parse_mode,
-                )
-
-            async def reply_document(
-                self, document, filename=None, caption=None, reply_markup=None
-            ):
-                return await self._bot.send_document(
-                    chat_id=self.chat_id,
-                    document=document,
-                    filename=filename,
-                    caption=caption,
-                    reply_markup=reply_markup,
-                )
-
-        class MockUpdate:
-            def __init__(self, query, bot):
-                self.effective_user = query.from_user
-                self.message = MockMessage(query.message, bot)
-
+        # 使用共享的 MockUpdate 类
         mock_update = MockUpdate(query, context.bot)
         await show_order_table(mock_update, context)
         return
@@ -1427,38 +1434,7 @@ async def handle_report_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer()
         from handlers.order_table_handlers import export_order_table_excel
 
-        # 创建一个模拟的update对象来调用export_order_table_excel
-        class MockMessage:
-            def __init__(self, original_message, bot):
-                self.chat_id = original_message.chat_id
-                self.message_id = original_message.message_id
-                self._bot = bot
-                self._original_message = original_message
-
-            async def reply_text(self, text, reply_markup=None, parse_mode=None):
-                return await self._bot.send_message(
-                    chat_id=self.chat_id,
-                    text=text,
-                    reply_markup=reply_markup,
-                    parse_mode=parse_mode,
-                )
-
-            async def reply_document(
-                self, document, filename=None, caption=None, reply_markup=None
-            ):
-                return await self._bot.send_document(
-                    chat_id=self.chat_id,
-                    document=document,
-                    filename=filename,
-                    caption=caption,
-                    reply_markup=reply_markup,
-                )
-
-        class MockUpdate:
-            def __init__(self, query, bot):
-                self.effective_user = query.from_user
-                self.message = MockMessage(query.message, bot)
-
+        # 使用共享的 MockUpdate 类
         mock_update = MockUpdate(query, context.bot)
         await export_order_table_excel(mock_update, context)
         return

@@ -553,5 +553,5 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"发送未知操作提示失败: {e}", exc_info=True)
             try:
                 await query.answer("⚠️ 未知的操作", show_alert=True)
-            except:
+            except Exception:
                 pass
