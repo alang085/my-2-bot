@@ -1,12 +1,12 @@
 """订单操作回调处理器"""
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
-from handlers.order_handlers import (
-    set_normal, set_overdue, set_end, set_breach, set_breach_end
-)
-from handlers.command_handlers import show_current_order
+
 import db_operations
 from handlers.attribution_handlers import change_orders_attribution
+from handlers.command_handlers import show_current_order
+from handlers.order_handlers import set_breach, set_breach_end, set_end, set_normal, set_overdue
 from utils.chat_helpers import is_group_chat
 
 
@@ -46,20 +46,17 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
         row = []
         for gid in sorted(all_group_ids):
             # 当前归属ID显示为选中状态
-            if gid == order['group_id']:
-                row.append(InlineKeyboardButton(
-                    f"✓ {gid}", callback_data=f"order_change_to_{gid}"))
+            if gid == order["group_id"]:
+                row.append(InlineKeyboardButton(f"✓ {gid}", callback_data=f"order_change_to_{gid}"))
             else:
-                row.append(InlineKeyboardButton(
-                    gid, callback_data=f"order_change_to_{gid}"))
+                row.append(InlineKeyboardButton(gid, callback_data=f"order_change_to_{gid}"))
             if len(row) == 4:
                 keyboard.append(row)
                 row = []
         if row:
             keyboard.append(row)
         back_text = "🔙 Back" if is_group else "🔙 返回"
-        keyboard.append([InlineKeyboardButton(
-            back_text, callback_data="order_action_back")])
+        keyboard.append([InlineKeyboardButton(back_text, callback_data="order_action_back")])
 
         if is_group:
             msg_text = (
@@ -78,10 +75,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
                 f"请选择新的归属ID:"
             )
 
-        await query.edit_message_text(
-            msg_text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        await query.edit_message_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard))
         await query.answer()
         return
 
@@ -100,7 +94,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
             return
 
         # 如果归属ID相同，无需更改
-        if order['group_id'] == new_group_id:
+        if order["group_id"] == new_group_id:
             msg = "✅ Group ID unchanged" if is_group else "✅ 归属ID未变更"
             await query.answer(msg, show_alert=True)
             return
@@ -157,7 +151,18 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
         await set_breach_end(update, context)
     elif action == "create":
         # create 命令需要参数，这里只能提示用法
-        await query.message.reply_text("To create an order, please use command: /create <Group ID> <Customer A/B> <Amount>")
+        try:
+            if query.message:
+                await query.message.reply_text(
+                    "To create an order, please use command: /create <Group ID> <Customer A/B> <Amount>"
+                )
+            else:
+                await query.answer(
+                    "Use command: /create <Group ID> <Customer A/B> <Amount>", show_alert=True
+                )
+        except Exception as e:
+            logger.error(f"发送创建订单提示失败: {e}", exc_info=True)
+            await query.answer("Use /create command", show_alert=True)
 
     # 尝试 answer callback，消除加载状态
     try:

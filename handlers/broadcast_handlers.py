@@ -1,11 +1,14 @@
 """播报功能处理器"""
+
 import logging
+
 from telegram import Update
 from telegram.ext import ContextTypes
+
 import db_operations
-from utils.chat_helpers import is_group_chat
-from utils.broadcast_helpers import format_broadcast_message, calculate_next_payment_date
 from decorators import authorized_required, group_chat_only
+from utils.broadcast_helpers import calculate_next_payment_date, format_broadcast_message
+from utils.chat_helpers import is_group_chat
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +22,18 @@ async def broadcast_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order = await db_operations.get_order_by_chat_id(chat_id)
 
     if not order:
-        await update.message.reply_text("❌ 当前群组没有活跃订单")
+        await update.message.reply_text("❌ No active order in this group")
         return
 
     # 从订单获取本金
-    principal = order.get('amount', 0)
+    principal = order.get("amount", 0)
     principal_12 = principal * 0.12
 
     # 获取未付利息（默认为0）
     outstanding_interest = 0
 
     # 从订单获取日期，计算下个周期（周四）
-    order_date_str = order.get('date', '')
+    order_date_str = order.get("date", "")
     # 使用统一的播报模板函数，基于订单日期计算下个周期
     _, date_str, weekday_str = calculate_next_payment_date(order_date_str)
     message = format_broadcast_message(
@@ -38,7 +41,7 @@ async def broadcast_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         principal_12=principal_12,
         outstanding_interest=outstanding_interest,
         date_str=date_str,
-        weekday_str=weekday_str
+        weekday_str=weekday_str,
     )
 
     try:
@@ -46,85 +49,87 @@ async def broadcast_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 不发送任何回复，静默完成
     except Exception as e:
         logger.error(f"发送播报消息失败: {e}", exc_info=True)
-        await update.message.reply_text(f"❌ 发送失败: {e}")
+        await update.message.reply_text(f"❌ Send failed: {e}")
 
 
-async def handle_broadcast_payment_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+async def handle_broadcast_payment_input(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+):
     """处理播报输入"""
     # 检查取消
-    if text.lower() == 'cancel':
-        context.user_data['state'] = None
-        context.user_data['broadcast_step'] = None
-        context.user_data['broadcast_data'] = {}
-        await update.message.reply_text("✅ 操作已取消")
+    if text.lower() == "cancel":
+        context.user_data["state"] = None
+        context.user_data["broadcast_step"] = None
+        context.user_data["broadcast_data"] = {}
+        await update.message.reply_text("✅ Operation cancelled")
         return
 
-    step = context.user_data.get('broadcast_step', 1)
-    data = context.user_data.get('broadcast_data', {})
+    step = context.user_data.get("broadcast_step", 1)
+    data = context.user_data.get("broadcast_data", {})
 
     if step == 1:
         # 输入本金
         try:
             principal = float(text)
             if principal <= 0:
-                await update.message.reply_text("❌ 本金必须大于0")
+                await update.message.reply_text("❌ Principal must be greater than 0")
                 return
-            data['principal'] = principal
-            context.user_data['broadcast_data'] = data
-            context.user_data['broadcast_step'] = 2
+            data["principal"] = principal
+            context.user_data["broadcast_data"] = data
+            context.user_data["broadcast_step"] = 2
             await update.message.reply_text(
-                f"✅ 本金已设置: {principal:.2f}\n\n"
-                "请输入本金12%金额（或输入 'auto' 自动计算）:"
+                f"✅ Principal set: {principal:.2f}\n\n"
+                "Enter 12% of principal (or 'auto' for auto calculation):"
             )
         except ValueError:
-            await update.message.reply_text("❌ 请输入有效的数字")
+            await update.message.reply_text("❌ Please enter a valid number")
 
     elif step == 2:
         # 输入本金12%
         try:
-            if text.lower() == 'auto':
-                principal = data.get('principal', 0)
+            if text.lower() == "auto":
+                principal = data.get("principal", 0)
                 principal_12 = principal * 0.12
             else:
                 principal_12 = float(text)
                 if principal_12 <= 0:
-                    await update.message.reply_text("❌ 金额必须大于0")
+                    await update.message.reply_text("❌ Amount must be greater than 0")
                     return
-            data['principal_12'] = principal_12
-            context.user_data['broadcast_data'] = data
-            context.user_data['broadcast_step'] = 3
+            data["principal_12"] = principal_12
+            context.user_data["broadcast_data"] = data
+            context.user_data["broadcast_step"] = 3
             await update.message.reply_text(
-                f"✅ 本金12%已设置: {principal_12:.2f}\n\n"
-                "请输入未付利息（员工输入）:"
+                f"✅ 12% of principal set: {principal_12:.2f}\n\n"
+                "Enter outstanding interest (employee input):"
             )
         except ValueError:
-            await update.message.reply_text("❌ 请输入有效的数字或 'auto'")
+            await update.message.reply_text("❌ Please enter a valid number or 'auto'")
 
     elif step == 3:
         # 输入未付利息
         try:
             outstanding_interest = float(text)
             if outstanding_interest < 0:
-                await update.message.reply_text("❌ 利息不能为负数")
+                await update.message.reply_text("❌ Interest cannot be negative")
                 return
-            data['outstanding_interest'] = outstanding_interest
+            data["outstanding_interest"] = outstanding_interest
 
             # 生成并发送播报消息
             await send_broadcast_message(update, context, data)
 
             # 清除状态
-            context.user_data['state'] = None
-            context.user_data['broadcast_step'] = None
-            context.user_data['broadcast_data'] = {}
+            context.user_data["state"] = None
+            context.user_data["broadcast_step"] = None
+            context.user_data["broadcast_data"] = {}
         except ValueError:
-            await update.message.reply_text("❌ 请输入有效的数字")
+            await update.message.reply_text("❌ Please enter a valid number")
 
 
 async def send_broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE, data: dict):
     """发送播报消息"""
-    principal = data.get('principal', 0)
-    principal_12 = data.get('principal_12', 0)
-    outstanding_interest = data.get('outstanding_interest', 0)
+    principal = data.get("principal", 0)
+    principal_12 = data.get("principal_12", 0)
+    outstanding_interest = data.get("outstanding_interest", 0)
 
     # 使用统一的播报模板函数
     _, date_str, weekday_str = calculate_next_payment_date()
@@ -133,7 +138,7 @@ async def send_broadcast_message(update: Update, context: ContextTypes.DEFAULT_T
         principal_12=principal_12,
         outstanding_interest=outstanding_interest,
         date_str=date_str,
-        weekday_str=weekday_str
+        weekday_str=weekday_str,
     )
 
     # 发送消息到当前群组
@@ -141,28 +146,26 @@ async def send_broadcast_message(update: Update, context: ContextTypes.DEFAULT_T
         await context.bot.send_message(chat_id=update.message.chat_id, text=message)
 
         # 保存数据到context，用于后续发送
-        context.user_data['broadcast_principal_12'] = principal_12
-        context.user_data['broadcast_outstanding_interest'] = outstanding_interest
-        context.user_data['broadcast_date_str'] = date_str
-        context.user_data['broadcast_weekday_str'] = weekday_str
+        context.user_data["broadcast_principal_12"] = principal_12
+        context.user_data["broadcast_outstanding_interest"] = outstanding_interest
+        context.user_data["broadcast_date_str"] = date_str
+        context.user_data["broadcast_weekday_str"] = weekday_str
 
         # 询问是否发送本金12%版本
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
         keyboard = [
             [
                 InlineKeyboardButton(
-                    f"发送本金12%版本 ({principal_12:.2f})",
-                    callback_data="broadcast_send_12")
+                    f"Send 12% version ({principal_12:.2f})", callback_data="broadcast_send_12"
+                )
             ],
-            [
-                InlineKeyboardButton("完成", callback_data="broadcast_done")
-            ]
+            [InlineKeyboardButton("Done", callback_data="broadcast_done")],
         ]
         await update.message.reply_text(
-            f"✅ 本金版本已发送\n\n"
-            f"是否发送本金12%版本 ({principal_12:.2f})？",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            f"✅ Principal version sent\n\n" f"Send 12% version ({principal_12:.2f})?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
     except Exception as e:
         logger.error(f"发送播报消息失败: {e}", exc_info=True)
-        await update.message.reply_text(f"❌ 发送失败: {e}")
+        await update.message.reply_text(f"❌ Send failed: {e}")

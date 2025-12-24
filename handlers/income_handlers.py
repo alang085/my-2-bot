@@ -1,15 +1,18 @@
 """收入明细查询处理器（仅管理员权限）"""
+
 import logging
 from datetime import datetime
 from typing import Optional
+
 import pytz
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+
 import db_operations
-from utils.date_helpers import get_daily_period_date
-from decorators import error_handler, private_chat_only
 from config import ADMIN_IDS
-from constants import INCOME_TYPES, CUSTOMER_TYPES
+from constants import INCOME_TYPES
+from decorators import error_handler, private_chat_only
+from utils.date_helpers import datetime_str_to_beijing_str, get_daily_period_date
 
 logger = logging.getLogger(__name__)
 
@@ -21,58 +24,32 @@ def _is_admin(user_id: Optional[int]) -> bool:
 
 async def format_income_detail(record: dict) -> str:
     """格式化单条收入明细 - 格式：时间 | 订单号 | 金额（对齐显示）"""
-    # 获取时间（转换为北京时间显示）
+    # 获取时间（转换为北京时间显示，使用统一的时区处理函数）
     time_str = "无时间"
-    if record.get('created_at'):
+    if record.get("created_at"):
         try:
-            created_at_str = record['created_at']
-
-            # 修复日期阈值：2024-12-02（修复代码部署日期）
-            # 在此日期之后创建的记录，已经是北京时间，直接显示
-            # 在此日期之前创建的记录，是UTC时间，需要转换
-            FIX_DEPLOY_DATE = datetime(2024, 12, 2).date()
-
-            # 解析时间字符串
-            if 'T' in created_at_str:
-                # ISO格式
-                try:
-                    dt = datetime.fromisoformat(
-                        created_at_str.replace('Z', '+00:00'))
-                except:
-                    created_at_str_clean = created_at_str.split(
-                        '.')[0].split('+')[0].split('Z')[0]
-                    dt = datetime.strptime(
-                        created_at_str_clean, "%Y-%m-%dT%H:%M:%S")
-            else:
-                # SQLite格式 (2024-12-02 15:00:00)
-                if '.' in created_at_str:
-                    dt = datetime.strptime(created_at_str.split('.')[
-                                           0], "%Y-%m-%d %H:%M:%S")
+            beijing_time_str = datetime_str_to_beijing_str(record["created_at"])
+            if beijing_time_str and beijing_time_str != record["created_at"]:
+                # 提取时间部分（HH:MM:SS）
+                if len(beijing_time_str) >= 19:
+                    time_str = beijing_time_str[11:19]
                 else:
-                    dt = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
-
-            # 判断是新数据（北京时间）还是旧数据（UTC）
-            record_date = dt.date()
-
-            if record_date >= FIX_DEPLOY_DATE:
-                # 新数据：已经是北京时间，直接显示
-                time_str = dt.strftime("%H:%M:%S")
-            else:
-                # 旧数据：是UTC时间，需要转换为北京时间
-                if dt.tzinfo is None:
-                    dt = pytz.utc.localize(dt)
-                tz_beijing = pytz.timezone('Asia/Shanghai')
-                dt_beijing = dt.astimezone(tz_beijing)
-                time_str = dt_beijing.strftime("%H:%M:%S")
+                    time_str = "无时间"
+            elif beijing_time_str:
+                # 如果解析失败但返回了原字符串，尝试提取时间部分
+                if " " in beijing_time_str and len(beijing_time_str.split(" ")) > 1:
+                    time_part = beijing_time_str.split(" ")[1]
+                    if len(time_part) >= 8:
+                        time_str = time_part[:8]
         except Exception as e:
             logger.warning(f"解析时间失败: {record.get('created_at')}, 错误: {e}")
             pass
 
     # 获取订单号
-    order_id = record.get('order_id') or '无'
+    order_id = record.get("order_id") or "无"
 
     # 格式化金额（处理 None 和 0 的情况）
-    amount = record.get('amount')
+    amount = record.get("amount")
     if amount is None:
         amount_str = "NULL"
     else:
@@ -89,9 +66,15 @@ async def format_income_detail(record: dict) -> str:
     return detail
 
 
-async def generate_income_report(records: list, start_date: str, end_date: str,
-                                 title: str = "收入明细", page: int = 1,
-                                 items_per_page: int = 20, income_type: Optional[str] = None) -> tuple:
+async def generate_income_report(
+    records: list,
+    start_date: str,
+    end_date: str,
+    title: str = "收入明细",
+    page: int = 1,
+    items_per_page: int = 20,
+    income_type: Optional[str] = None,
+) -> tuple:
     """
     生成收入明细报表（支持分页）
 
@@ -102,18 +85,18 @@ async def generate_income_report(records: list, start_date: str, end_date: str,
 
     # 如果指定了类型，只显示该类型的记录
     if income_type:
-        records = [r for r in records if r['type'] == income_type]
+        records = [r for r in records if r["type"] == income_type]
 
     # 按类型分组
     by_type = {}
     for record in records:
-        type_name = record['type']
+        type_name = record["type"]
         if type_name not in by_type:
             by_type[type_name] = []
         by_type[type_name].append(record)
 
     # 计算总计（处理 None 值）
-    total_amount = sum(r.get('amount', 0) or 0 for r in records)
+    total_amount = sum(r.get("amount", 0) or 0 for r in records)
 
     # 生成报表文本
     report = f"💰 {title}\n"
@@ -122,8 +105,7 @@ async def generate_income_report(records: list, start_date: str, end_date: str,
     report += f"{'═' * 30}\n\n"
 
     # 按类型显示顺序：订单完成、违约完成、本金减少、利息收入
-    type_order = ['completed', 'breach_end',
-                  'principal_reduction', 'interest', 'adjustment']
+    type_order = ["completed", "breach_end", "principal_reduction", "interest", "adjustment"]
 
     # 如果指定了类型，只显示该类型
     if income_type:
@@ -140,9 +122,9 @@ async def generate_income_report(records: list, start_date: str, end_date: str,
         type_records = by_type[type_key]
 
         # 按录入时间正序排序（最早录入的在前）
-        type_records.sort(key=lambda x: x.get('created_at', '') or '')
+        type_records.sort(key=lambda x: x.get("created_at", "") or "")
 
-        type_total = sum(r.get('amount', 0) or 0 for r in type_records)
+        type_total = sum(r.get("amount", 0) or 0 for r in type_records)
         type_count = len(type_records)
 
         report += f"【{type_name}】总计: {type_total:,.2f} ({type_count}笔)\n"
@@ -166,8 +148,7 @@ async def generate_income_report(records: list, start_date: str, end_date: str,
         # 显示明细（全部显示）
         for i, record in enumerate(display_records, 1):
             detail = await format_income_detail(record)
-            global_idx = (page - 1) * items_per_page + \
-                i if type_count > items_per_page else i
+            global_idx = (page - 1) * items_per_page + i if type_count > items_per_page else i
             report += f"{global_idx}. {detail}\n"
 
         current_type = type_key
@@ -182,9 +163,9 @@ async def generate_income_report(records: list, start_date: str, end_date: str,
             type_records = by_type[type_key]
 
             # 按录入时间正序排序（最早录入的在前）
-            type_records.sort(key=lambda x: x.get('created_at', '') or '')
+            type_records.sort(key=lambda x: x.get("created_at", "") or "")
 
-            type_total = sum(r.get('amount', 0) or 0 for r in type_records)
+            type_total = sum(r.get("amount", 0) or 0 for r in type_records)
             type_count = len(type_records)
 
             report += f"【{type_name}】总计: {type_total:,.2f} ({type_count}笔)\n"
@@ -240,30 +221,34 @@ async def show_income_detail(update: Update, context: ContextTypes.DEFAULT_TYPE)
         page_buttons = []
         # 第一页只显示"下一页"
         if 1 < total_pages:
-            page_buttons.append(InlineKeyboardButton(
-                "下一页 ▶️", callback_data=f"income_page_{current_type}|2|{date}|{date}"))
+            page_buttons.append(
+                InlineKeyboardButton(
+                    "下一页 ▶️", callback_data=f"income_page_{current_type}|2|{date}|{date}"
+                )
+            )
         if page_buttons:
             keyboard.append(page_buttons)
 
-    keyboard.extend([
+    keyboard.extend(
         [
-            InlineKeyboardButton("📆 日期查询", callback_data="income_view_query")
-        ],
-        [
-            InlineKeyboardButton(
-                "🔙 返回报表", callback_data="report_view_today_ALL")
+            [InlineKeyboardButton("📆 日期查询", callback_data="income_view_query")],
+            [InlineKeyboardButton("🔙 返回报表", callback_data="report_view_today_ALL")],
         ]
-    ])
+    )
 
     try:
         if update.callback_query:
-            await update.callback_query.edit_message_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
+            await update.callback_query.edit_message_text(
+                report, reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         else:
             await update.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
     except Exception as e:
         logger.error(f"显示收入明细失败: {e}", exc_info=True)
         if update.callback_query:
-            await update.callback_query.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
+            await update.callback_query.message.reply_text(
+                report, reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         else:
             await update.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -274,7 +259,7 @@ async def handle_income_query_input(update: Update, context: ContextTypes.DEFAUL
 
     if not _is_admin(user_id):
         await update.message.reply_text("❌ 此功能仅限管理员使用")
-        context.user_data['state'] = None
+        context.user_data["state"] = None
         return
 
     try:
@@ -285,7 +270,9 @@ async def handle_income_query_input(update: Update, context: ContextTypes.DEFAUL
             start_date = dates[0]
             end_date = dates[1]
         else:
-            await update.message.reply_text("❌ 格式错误。请使用：\n格式1 (单日): 2024-01-01\n格式2 (范围): 2024-01-01 2024-01-31")
+            await update.message.reply_text(
+                "❌ 格式错误。请使用：\n格式1 (单日): 2024-01-01\n格式2 (范围): 2024-01-01 2024-01-31"
+            )
             return
 
         # 验证日期格式
@@ -295,8 +282,7 @@ async def handle_income_query_input(update: Update, context: ContextTypes.DEFAUL
         records = await db_operations.get_income_records(start_date, end_date)
 
         report, has_more, total_pages, current_type = await generate_income_report(
-            records, start_date, end_date,
-            f"收入明细 ({start_date} 至 {end_date})", page=1
+            records, start_date, end_date, f"收入明细 ({start_date} 至 {end_date})", page=1
         )
 
         keyboard = []
@@ -306,21 +292,24 @@ async def handle_income_query_input(update: Update, context: ContextTypes.DEFAUL
             page_buttons = []
             # 第一页只显示"下一页"
             # 确保类型字符串格式一致
-            type_for_callback = 'None' if current_type is None else current_type
+            type_for_callback = "None" if current_type is None else current_type
             if 1 < total_pages:
-                page_buttons.append(InlineKeyboardButton(
-                    "下一页 ▶️", callback_data=f"income_page_{type_for_callback}|2|{start_date}|{end_date}"))
+                page_buttons.append(
+                    InlineKeyboardButton(
+                        "下一页 ▶️",
+                        callback_data=f"income_page_{type_for_callback}|2|{start_date}|{end_date}",
+                    )
+                )
             if page_buttons:
                 keyboard.append(page_buttons)
 
-        keyboard.append([InlineKeyboardButton(
-            "🔙 返回", callback_data="income_view_today")])
+        keyboard.append([InlineKeyboardButton("🔙 返回", callback_data="income_view_today")])
         await update.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
-        context.user_data['state'] = None
+        context.user_data["state"] = None
 
     except ValueError:
         await update.message.reply_text("❌ 日期格式错误。请使用 YYYY-MM-DD 格式")
     except Exception as e:
         logger.error(f"查询收入明细出错: {e}", exc_info=True)
         await update.message.reply_text(f"⚠️ 错误: {e}")
-        context.user_data['state'] = None
+        context.user_data["state"] = None

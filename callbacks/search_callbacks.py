@@ -1,7 +1,10 @@
 """搜索相关回调处理器"""
+
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+
 import db_operations
 from utils.message_helpers import display_search_results_helper
 
@@ -20,17 +23,12 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     if data == "search_menu_state":
         keyboard = [
-            [InlineKeyboardButton(
-                "正常", callback_data="search_do_state_normal")],
-            [InlineKeyboardButton(
-                "逾期", callback_data="search_do_state_overdue")],
-            [InlineKeyboardButton(
-                "违约", callback_data="search_do_state_breach")],
-            [InlineKeyboardButton(
-                "完成", callback_data="search_do_state_end")],
-            [InlineKeyboardButton("违约完成",
-                                  callback_data="search_do_state_breach_end")],
-            [InlineKeyboardButton("🔙 返回", callback_data="search_start")]
+            [InlineKeyboardButton("正常", callback_data="search_do_state_normal")],
+            [InlineKeyboardButton("逾期", callback_data="search_do_state_overdue")],
+            [InlineKeyboardButton("违约", callback_data="search_do_state_breach")],
+            [InlineKeyboardButton("完成", callback_data="search_do_state_end")],
+            [InlineKeyboardButton("违约完成", callback_data="search_do_state_breach_end")],
+            [InlineKeyboardButton("🔙 返回", callback_data="search_start")],
         ]
         await query.edit_message_text("请选择状态:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
@@ -38,105 +36,121 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
     if data == "search_menu_attribution":
         group_ids = await db_operations.get_all_group_ids()
         if not group_ids:
-            await query.edit_message_text("⚠️ 无归属数据",
-                                          reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 返回", callback_data="search_start")]]))
+            await query.edit_message_text(
+                "⚠️ 无归属数据",
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔙 返回", callback_data="search_start")]]
+                ),
+            )
             return
 
         keyboard = []
         row = []
         for gid in sorted(group_ids)[:40]:
-            row.append(InlineKeyboardButton(
-                gid, callback_data=f"search_do_attribution_{gid}"))
+            row.append(InlineKeyboardButton(gid, callback_data=f"search_do_attribution_{gid}"))
             if len(row) == 4:
                 keyboard.append(row)
                 row = []
         if row:
             keyboard.append(row)
-        keyboard.append([InlineKeyboardButton(
-            "🔙 返回", callback_data="search_start")])
+        keyboard.append([InlineKeyboardButton("🔙 返回", callback_data="search_start")])
         await query.edit_message_text("请选择归属ID:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data == "search_menu_group":
         keyboard = [
-            [InlineKeyboardButton("周一", callback_data="search_do_group_一"), InlineKeyboardButton(
-                "周二", callback_data="search_do_group_二"), InlineKeyboardButton("周三", callback_data="search_do_group_三")],
-            [InlineKeyboardButton("周四", callback_data="search_do_group_四"), InlineKeyboardButton(
-                "周五", callback_data="search_do_group_五"), InlineKeyboardButton("周六", callback_data="search_do_group_六")],
+            [
+                InlineKeyboardButton("周一", callback_data="search_do_group_一"),
+                InlineKeyboardButton("周二", callback_data="search_do_group_二"),
+                InlineKeyboardButton("周三", callback_data="search_do_group_三"),
+            ],
+            [
+                InlineKeyboardButton("周四", callback_data="search_do_group_四"),
+                InlineKeyboardButton("周五", callback_data="search_do_group_五"),
+                InlineKeyboardButton("周六", callback_data="search_do_group_六"),
+            ],
             [InlineKeyboardButton("周日", callback_data="search_do_group_日")],
-            [InlineKeyboardButton("🔙 返回", callback_data="search_start")]
+            [InlineKeyboardButton("🔙 返回", callback_data="search_start")],
         ]
-        await query.edit_message_text("请选择星期分组:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(
+            "请选择星期分组:", reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         return
 
     if data == "search_start":
         keyboard = [
             [
-                InlineKeyboardButton(
-                    "按状态", callback_data="search_menu_state"),
-                InlineKeyboardButton(
-                    "按归属ID", callback_data="search_menu_attribution"),
-                InlineKeyboardButton(
-                    "按星期分组", callback_data="search_menu_group")
+                InlineKeyboardButton("按状态", callback_data="search_menu_state"),
+                InlineKeyboardButton("按归属ID", callback_data="search_menu_attribution"),
+                InlineKeyboardButton("按星期分组", callback_data="search_menu_group"),
             ],
-            [
-                InlineKeyboardButton(
-                    "按总有效金额", callback_data="search_menu_amount")
-            ]
+            [InlineKeyboardButton("按总有效金额", callback_data="search_menu_amount")],
         ]
         await query.edit_message_text("🔍 查找方式:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data == "search_menu_amount":
-        await query.message.reply_text(
-            "💰 按总有效金额查找\n\n"
-            "请输入目标金额（支持'万'单位）：\n"
-            "例如：\n"
-            "• 20万（从周一到周日均匀选取总金额20万的订单）\n"
-            "• 200000（直接输入数字）\n\n"
-            "系统将从周一到周日的有效订单中，均匀地选择订单，使得总金额接近目标金额。\n\n"
-            "请输入:（输入 'cancel' 取消）"
-        )
-        context.user_data['state'] = 'SEARCHING_AMOUNT'
+        try:
+            if query.message:
+                await query.message.reply_text(
+                    "💰 按总有效金额查找\n\n"
+                    "请输入目标金额（支持'万'单位）：\n"
+                    "例如：\n"
+                    "• 20万（从周一到周日均匀选取总金额20万的订单）\n"
+                    "• 200000（直接输入数字）\n\n"
+                    "系统将从周一到周日的有效订单中，均匀地选择订单，使得总金额接近目标金额。\n\n"
+                    "请输入:（输入 'cancel' 取消）"
+                )
+            else:
+                await query.answer("请输入目标金额（支持'万'单位）", show_alert=True)
+        except Exception as e:
+            logger.error(f"发送金额查找提示失败: {e}", exc_info=True)
+            await query.answer("请输入目标金额", show_alert=True)
+        context.user_data["state"] = "SEARCHING_AMOUNT"
         await query.answer()
         return
 
     if data == "search_lock_start":
-        await query.message.reply_text(
-            "🔍 请输入查询条件（支持综合查询）：\n\n"
-            "单一查询：\n"
-            "• S01（按归属查询）\n"
-            "• 三（按星期分组查询）\n"
-            "• 正常（按状态查询）\n\n"
-            "综合查询：\n"
-            "• 三 正常（周三的正常订单）\n"
-            "• S01 正常（S01的正常订单）\n\n"
-            "请输入:",
-            parse_mode='Markdown'
-        )
-        context.user_data['state'] = 'SEARCHING'
+        try:
+            if query.message:
+                await query.message.reply_text(
+                    "🔍 请输入查询条件（支持综合查询）：\n\n"
+                    "单一查询：\n"
+                    "• S01（按归属查询）\n"
+                    "• 三（按星期分组查询）\n"
+                    "• 正常（按状态查询）\n\n"
+                    "综合查询：\n"
+                    "• 三 正常（周三的正常订单）\n"
+                    "• S01 正常（S01的正常订单）\n\n"
+                    "请输入:",
+                    parse_mode="Markdown",
+                )
+            else:
+                await query.answer("请输入查询条件", show_alert=True)
+        except Exception as e:
+            logger.error(f"发送查询条件提示失败: {e}", exc_info=True)
+            await query.answer("请输入查询条件", show_alert=True)
+        context.user_data["state"] = "SEARCHING"
+        await query.answer()
         return
 
     if data == "search_change_attribution":
         # 获取查找结果
-        orders = context.user_data.get('search_orders', [])
+        orders = context.user_data.get("search_orders", [])
         if not orders:
             await query.answer("❌ 没有找到订单，请先使用查找功能", show_alert=True)
             # 尝试重新显示查找菜单
             try:
                 keyboard = [
                     [
-                        InlineKeyboardButton(
-                            "按状态", callback_data="search_menu_state"),
-                        InlineKeyboardButton(
-                            "按归属ID", callback_data="search_menu_attribution"),
-                        InlineKeyboardButton(
-                            "按星期分组", callback_data="search_menu_group")
+                        InlineKeyboardButton("按状态", callback_data="search_menu_state"),
+                        InlineKeyboardButton("按归属ID", callback_data="search_menu_attribution"),
+                        InlineKeyboardButton("按星期分组", callback_data="search_menu_group"),
                     ]
                 ]
                 await query.edit_message_text(
                     "❌ 没有找到订单\n\n请先使用查找功能找到订单后，再更改归属。",
-                    reply_markup=InlineKeyboardMarkup(keyboard)
+                    reply_markup=InlineKeyboardMarkup(keyboard),
                 )
             except Exception:
                 pass
@@ -155,25 +169,23 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
         keyboard = []
         row = []
         for gid in sorted(all_group_ids):
-            row.append(InlineKeyboardButton(
-                gid, callback_data=f"search_change_to_{gid}"))
+            row.append(InlineKeyboardButton(gid, callback_data=f"search_change_to_{gid}"))
             if len(row) == 4:
                 keyboard.append(row)
                 row = []
         if row:
             keyboard.append(row)
-        keyboard.append([InlineKeyboardButton(
-            "🔙 取消", callback_data="search_start")])
+        keyboard.append([InlineKeyboardButton("🔙 取消", callback_data="search_start")])
 
         order_count = len(orders)
-        total_amount = sum(order.get('amount', 0) for order in orders)
+        total_amount = sum(order.get("amount", 0) for order in orders)
 
         await query.edit_message_text(
             f"🔄 更改归属\n\n"
             f"找到订单: {order_count} 个\n"
             f"订单金额: {total_amount:,.2f}\n\n"
             f"请选择新的归属ID:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
         return
 
@@ -181,24 +193,21 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
         # 处理归属变更
         new_group_id = data[17:]  # 提取新的归属ID
 
-        orders = context.user_data.get('search_orders', [])
+        orders = context.user_data.get("search_orders", [])
         if not orders:
             await query.answer("❌ 没有找到订单，请重新查找", show_alert=True)
             # 尝试重新显示查找菜单
             try:
                 keyboard = [
                     [
-                        InlineKeyboardButton(
-                            "按状态", callback_data="search_menu_state"),
-                        InlineKeyboardButton(
-                            "按归属ID", callback_data="search_menu_attribution"),
-                        InlineKeyboardButton(
-                            "按星期分组", callback_data="search_menu_group")
+                        InlineKeyboardButton("按状态", callback_data="search_menu_state"),
+                        InlineKeyboardButton("按归属ID", callback_data="search_menu_attribution"),
+                        InlineKeyboardButton("按星期分组", callback_data="search_menu_group"),
                     ]
                 ]
                 await query.edit_message_text(
                     "❌ 查找结果已过期\n\n请重新使用查找功能。",
-                    reply_markup=InlineKeyboardMarkup(keyboard)
+                    reply_markup=InlineKeyboardMarkup(keyboard),
                 )
             except Exception:
                 pass
@@ -207,6 +216,7 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
         # 执行归属变更
         try:
             from handlers.attribution_handlers import change_orders_attribution
+
             success_count, fail_count = await change_orders_attribution(
                 update, context, orders, new_group_id
             )
@@ -222,7 +232,7 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
             await query.answer("✅ 归属变更完成")
 
             # 清除查找结果
-            context.user_data.pop('search_orders', None)
+            context.user_data.pop("search_orders", None)
         except Exception as e:
             logger.error(f"归属变更失败: {e}", exc_info=True)
             await query.answer(f"❌ 归属变更失败: {str(e)}", show_alert=True)
@@ -232,11 +242,11 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
     if data.startswith("search_do_"):
         criteria = {}
         if data.startswith("search_do_state_"):
-            criteria['state'] = data[16:]
+            criteria["state"] = data[16:]
         elif data.startswith("search_do_attribution_"):
-            criteria['group_id'] = data[22:]
+            criteria["group_id"] = data[22:]
         elif data.startswith("search_do_group_"):
-            criteria['weekday_group'] = data[16:]
+            criteria["weekday_group"] = data[16:]
 
         orders = await db_operations.search_orders_advanced(criteria)
         await display_search_results_helper(update, context, orders)

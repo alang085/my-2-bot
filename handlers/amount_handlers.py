@@ -1,4 +1,5 @@
 """金额操作处理器"""
+
 import os
 import sys
 from pathlib import Path
@@ -9,14 +10,16 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 import logging
+
 from telegram import Update
 from telegram.ext import ContextTypes
+
 import db_operations
-from utils.chat_helpers import is_group_chat
-from utils.stats_helpers import update_all_stats, update_liquid_capital
-from utils.date_helpers import get_daily_period_date
 from config import ADMIN_IDS
 from handlers.undo_handlers import reset_undo_count
+from utils.chat_helpers import is_group_chat
+from utils.date_helpers import get_daily_period_date
+from utils.stats_helpers import update_all_stats, update_liquid_capital
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +53,7 @@ async def handle_amount_operation(update: Update, context: ContextTypes.DEFAULT_
     logger.info(f"收到快捷操作消息: {text} (用户: {user_id}, 群组: {chat_id})")
 
     # 只处理以 + 开头的消息（快捷操作）
-    if not text.startswith('+'):
+    if not text.startswith("+"):
         return  # 不是快捷操作格式，不处理
 
     # 检查是否有订单（利息收入不需要订单）
@@ -66,7 +69,7 @@ async def handle_amount_operation(update: Update, context: ContextTypes.DEFAULT_
             await update.message.reply_text(message)
             return
 
-        if amount_text.endswith('b'):
+        if amount_text.endswith("b"):
             # 本金减少 - 需要订单
             if not order:
                 message = "❌ Failed: No active order in this group."
@@ -76,18 +79,27 @@ async def handle_amount_operation(update: Update, context: ContextTypes.DEFAULT_
             await process_principal_reduction(update, order, amount, context)
         else:
             # 利息收入 - 不需要订单，但如果有订单会关联到订单的归属ID
+            # 当订单状态为 end 或 breach_end 时，+金额命令默认为补利息
             try:
                 amount = float(amount_text)
                 if order:
-                    # 如果有订单，关联到订单的归属ID
-                    await process_interest(update, order, amount, context)
+                    # 如果订单状态为 end 或 breach_end，作为补利息处理
+                    # end: 订单正常完成，+金额作为补利息
+                    # breach_end: 违约订单完成，+金额作为违约还款的补利息
+                    if order["state"] in ("end", "breach_end"):
+                        # 订单已完成或违约完成，+金额作为补利息处理
+                        # 使用 process_interest 函数，它会自动关联到订单的归属ID
+                        await process_interest(update, order, amount, context)
+                    else:
+                        # 订单未完成，正常处理利息收入
+                        await process_interest(update, order, amount, context)
                 else:
                     # 如果没有订单，先记录收入明细，再更新统计数据
                     try:
                         # 1. 先记录收入明细（如果失败，不更新统计数据）
                         await db_operations.record_income(
                             date=get_daily_period_date(),
-                            type='interest',
+                            type="interest",
                             amount=amount,
                             group_id=None,
                             order_id=None,
@@ -95,22 +107,28 @@ async def handle_amount_operation(update: Update, context: ContextTypes.DEFAULT_
                             customer=None,
                             weekday_group=None,
                             note="利息收入（无关联订单）",
-                            created_by=user_id
+                            created_by=user_id,
                         )
                     except Exception as e:
                         logger.error(f"记录利息收入明细失败: {e}", exc_info=True)
-                        message = f"❌ 记录收入明细失败，请稍后重试或联系管理员。错误: {str(e)}"
+                        if is_group_chat(update):
+                            message = f"❌ Failed to record income details. Please retry or contact admin. Error: {str(e)}"
+                        else:
+                            message = f"❌ 记录收入明细失败，请稍后重试或联系管理员。错误: {str(e)}"
                         await update.message.reply_text(message)
                         return
 
                     # 2. 收入明细记录成功后，再更新统计数据
                     try:
-                        await update_all_stats('interest', amount, 0, None)
+                        await update_all_stats("interest", amount, 0, None)
                         await update_liquid_capital(amount)
                     except Exception as e:
                         logger.error(f"更新利息收入统计数据失败: {e}", exc_info=True)
                         # 统计数据更新失败，但收入明细已记录，需要手动修复或重新计算
-                        message = f"❌ 更新统计失败，但收入明细已记录。请使用 /fix_statistics 修复统计数据。错误: {str(e)}"
+                        if is_group_chat(update):
+                            message = f"❌ Statistics update failed, but income record saved. Use /fix_statistics to repair. Error: {str(e)}"
+                        else:
+                            message = f"❌ 更新统计失败，但收入明细已记录。请使用 /fix_statistics 修复统计数据。错误: {str(e)}"
                         await update.message.reply_text(message)
                         return
                     # 记录操作历史（用于撤销）- 使用当前聊天环境的 chat_id
@@ -118,14 +136,14 @@ async def handle_amount_operation(update: Update, context: ContextTypes.DEFAULT_
                     if current_chat_id and user_id:
                         await db_operations.record_operation(
                             user_id=user_id,
-                            operation_type='interest',
+                            operation_type="interest",
                             operation_data={
-                                'amount': amount,
-                                'group_id': None,
-                                'order_id': None,
-                                'date': get_daily_period_date()
+                                "amount": amount,
+                                "group_id": None,
+                                "order_id": None,
+                                "date": get_daily_period_date(),
                             },
-                            chat_id=current_chat_id  # 当前操作发生的聊天环境
+                            chat_id=current_chat_id,  # 当前操作发生的聊天环境
                         )
                     # 重置撤销计数
                     reset_undo_count(context, user_id)
@@ -151,10 +169,12 @@ async def handle_amount_operation(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text(message)
 
 
-async def process_principal_reduction(update: Update, order: dict, amount: float, context: ContextTypes.DEFAULT_TYPE = None):
+async def process_principal_reduction(
+    update: Update, order: dict, amount: float, context: ContextTypes.DEFAULT_TYPE = None
+):
     """处理本金减少"""
     try:
-        if order['state'] not in ('normal', 'overdue'):
+        if order["state"] not in ("normal", "overdue"):
             message = "❌ Failed: Order state not allowed."
             await update.message.reply_text(message)
             return
@@ -164,25 +184,25 @@ async def process_principal_reduction(update: Update, order: dict, amount: float
             await update.message.reply_text(message)
             return
 
-        if amount > order['amount']:
+        if amount > order["amount"]:
             message = f"❌ Failed: Exceeds order amount ({order['amount']:.2f})"
             await update.message.reply_text(message)
             return
 
         # 更新订单金额
-        new_amount = order['amount'] - amount
-        if not await db_operations.update_order_amount(order['chat_id'], new_amount):
+        new_amount = order["amount"] - amount
+        if not await db_operations.update_order_amount(order["chat_id"], new_amount):
             message = "❌ Failed: DB Error"
             await update.message.reply_text(message)
             return
 
-        group_id = order['group_id']
+        group_id = order["group_id"]
 
         # 1. 有效金额减少
-        await update_all_stats('valid', -amount, 0, group_id)
+        await update_all_stats("valid", -amount, 0, group_id)
 
         # 2. 完成金额增加
-        await update_all_stats('completed', amount, 0, group_id)
+        await update_all_stats("completed", amount, 0, group_id)
 
         # 3. 流动资金增加
         await update_liquid_capital(amount)
@@ -192,36 +212,40 @@ async def process_principal_reduction(update: Update, order: dict, amount: float
         try:
             await db_operations.record_income(
                 date=get_daily_period_date(),
-                type='principal_reduction',
+                type="principal_reduction",
                 amount=amount,
                 group_id=group_id,
-                order_id=order['order_id'],
-                order_date=order['date'],
-                customer=order['customer'],
-                weekday_group=order['weekday_group'],
+                order_id=order["order_id"],
+                order_date=order["date"],
+                customer=order["customer"],
+                weekday_group=order["weekday_group"],
                 note=f"本金减少 {amount:.2f}，剩余 {new_amount:.2f}",
-                created_by=user_id
+                created_by=user_id,
             )
         except Exception as e:
             logger.error(f"记录本金减少收入明细失败: {e}", exc_info=True)
             # 继续执行，不中断流程
 
         # 记录操作历史（用于撤销）- 使用当前聊天环境的 chat_id
-        current_chat_id = update.effective_chat.id if update.effective_chat else (order.get('chat_id') if order else None)
+        current_chat_id = (
+            update.effective_chat.id
+            if update.effective_chat
+            else (order.get("chat_id") if order else None)
+        )
         if current_chat_id and user_id:
             await db_operations.record_operation(
                 user_id=user_id,
-                operation_type='principal_reduction',
+                operation_type="principal_reduction",
                 operation_data={
-                    'amount': amount,
-                    'old_amount': order['amount'],
-                    'new_amount': new_amount,
-                    'group_id': group_id,
-                    'chat_id': order['chat_id'],  # 订单的 chat_id（用于撤销时恢复订单）
-                    'order_id': order['order_id'],
-                    'date': get_daily_period_date()
+                    "amount": amount,
+                    "old_amount": order["amount"],
+                    "new_amount": new_amount,
+                    "group_id": group_id,
+                    "chat_id": order["chat_id"],  # 订单的 chat_id（用于撤销时恢复订单）
+                    "order_id": order["order_id"],
+                    "date": get_daily_period_date(),
                 },
-                chat_id=current_chat_id  # 当前操作发生的聊天环境
+                chat_id=current_chat_id,  # 当前操作发生的聊天环境
             )
 
         # 重置撤销计数
@@ -230,7 +254,9 @@ async def process_principal_reduction(update: Update, order: dict, amount: float
 
         # 群组只回复成功，私聊显示详情
         if is_group_chat(update):
-            await update.message.reply_text(f"✅ Principal Reduced: {amount:.2f}\nRemaining: {new_amount:.2f}")
+            await update.message.reply_text(
+                f"✅ Principal Reduced: {amount:.2f}\nRemaining: {new_amount:.2f}"
+            )
         else:
             await update.message.reply_text(
                 f"✅ Principal Reduced Successfully!\n"
@@ -244,65 +270,90 @@ async def process_principal_reduction(update: Update, order: dict, amount: float
         await update.message.reply_text(message)
 
 
-async def process_interest(update: Update, order: dict, amount: float, context: ContextTypes.DEFAULT_TYPE = None):
-    """处理利息收入"""
+async def process_interest(
+    update: Update, order: dict, amount: float, context: ContextTypes.DEFAULT_TYPE = None
+):
+    """处理利息收入（支持订单完成后的补利息）"""
     try:
         if amount <= 0:
             message = "❌ Failed: Amount must be positive."
             await update.message.reply_text(message)
             return
 
-        group_id = order['group_id']
+        group_id = order["group_id"]
+        order_state = order.get("state", "")
+
+        # 根据订单状态确定备注信息
+        if order_state == "end":
+            note = "补利息（订单已完成）"
+        elif order_state == "breach_end":
+            note = "补利息（违约还款）"
+        elif order_state == "breach":
+            note = "利息收入（违约状态）"
+        else:
+            note = "利息收入"
 
         # 先记录收入明细（源数据），再更新统计数据，确保数据一致性
         user_id = update.effective_user.id if update.effective_user else None
+        income_record_id = None
         try:
             # 1. 先记录收入明细（如果失败，不更新统计数据）
-            await db_operations.record_income(
+            income_record_id = await db_operations.record_income(
                 date=get_daily_period_date(),
-                type='interest',
+                type="interest",
                 amount=amount,
                 group_id=group_id,
-                order_id=order['order_id'],
-                order_date=order['date'],
-                customer=order['customer'],
-                weekday_group=order['weekday_group'],
-                note="利息收入",
-                created_by=user_id
+                order_id=order["order_id"],
+                order_date=order["date"],
+                customer=order["customer"],
+                weekday_group=order["weekday_group"],
+                note=note,
+                created_by=user_id,
             )
         except Exception as e:
             logger.error(f"记录利息收入明细失败: {e}", exc_info=True)
-            message = f"❌ 记录收入明细失败，请稍后重试或联系管理员。错误: {str(e)}"
+            if is_group_chat(update):
+                message = f"❌ Failed to record income details. Please retry or contact admin. Error: {str(e)}"
+            else:
+                message = f"❌ 记录收入明细失败，请稍后重试或联系管理员。错误: {str(e)}"
             await update.message.reply_text(message)
             return
 
         # 2. 收入明细记录成功后，再更新统计数据
         try:
             # 1. 利息收入
-            await update_all_stats('interest', amount, 0, group_id)
+            await update_all_stats("interest", amount, 0, group_id)
             # 2. 流动资金增加
             await update_liquid_capital(amount)
         except Exception as e:
             logger.error(f"更新利息收入统计数据失败: {e}", exc_info=True)
             # 统计数据更新失败，但收入明细已记录，需要手动修复或重新计算
-            message = f"❌ 更新统计失败，但收入明细已记录。请使用 /fix_statistics 修复统计数据。错误: {str(e)}"
+            if is_group_chat(update):
+                message = f"❌ Statistics update failed, but income record saved. Use /fix_statistics to repair. Error: {str(e)}"
+            else:
+                message = f"❌ 更新统计失败，但收入明细已记录。请使用 /fix_statistics 修复统计数据。错误: {str(e)}"
             await update.message.reply_text(message)
             return
 
         # 记录操作历史（用于撤销）
         # 记录操作历史（用于撤销）- 使用当前聊天环境的 chat_id
-        current_chat_id = update.effective_chat.id if update.effective_chat else (order.get('chat_id') if order else None)
+        current_chat_id = (
+            update.effective_chat.id
+            if update.effective_chat
+            else (order.get("chat_id") if order else None)
+        )
         if current_chat_id and user_id:
             await db_operations.record_operation(
                 user_id=user_id,
-                operation_type='interest',
+                operation_type="interest",
                 operation_data={
-                    'amount': amount,
-                    'group_id': group_id,
-                    'order_id': order['order_id'],
-                    'date': get_daily_period_date()
+                    "amount": amount,
+                    "group_id": group_id,
+                    "order_id": order["order_id"],
+                    "date": get_daily_period_date(),
+                    "income_record_id": income_record_id,  # 保存收入记录ID，用于撤销时标记
                 },
-                chat_id=current_chat_id  # 当前操作发生的聊天环境
+                chat_id=current_chat_id,  # 当前操作发生的聊天环境
             )
 
         # 重置撤销计数
@@ -323,5 +374,3 @@ async def process_interest(update: Update, order: dict, amount: float, context: 
         logger.error(f"处理利息收入时出错: {e}", exc_info=True)
         message = "❌ Error processing request."
         await update.message.reply_text(message)
-
-

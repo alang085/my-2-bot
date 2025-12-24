@@ -1,14 +1,19 @@
 """增量报表合并回调处理器"""
+
 # 标准库
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 # 本地模块
 import db_operations
-from utils.incremental_report_generator import get_or_create_baseline_date, prepare_incremental_data
-from utils.incremental_report_merger import merge_incremental_report_to_global, calculate_incremental_stats
 from config import ADMIN_IDS
+from utils.incremental_report_generator import get_or_create_baseline_date, prepare_incremental_data
+from utils.incremental_report_merger import (
+    calculate_incremental_stats,
+    merge_incremental_report_to_global,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,15 +23,15 @@ async def handle_incremental_merge_callback(update: Update, context: ContextType
     query = update.callback_query
     if not query:
         return
-    
+
     data = query.data
     user_id = update.effective_user.id if update.effective_user else None
-    
+
     # 检查权限（仅管理员）
     if not user_id or user_id not in ADMIN_IDS:
         await query.answer("❌ 仅管理员可以合并增量报表", show_alert=True)
         return
-    
+
     # 解析回调数据：merge_incremental_YYYY-MM-DD 或 merge_incremental_confirm_YYYY-MM-DD
     if data.startswith("merge_incremental_confirm_"):
         # 确认合并
@@ -45,18 +50,20 @@ async def handle_incremental_merge_callback(update: Update, context: ContextType
         await query.answer("❌ 未知操作", show_alert=True)
 
 
-async def _handle_merge_request(update: Update, context: ContextTypes.DEFAULT_TYPE, merge_date: str):
+async def _handle_merge_request(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, merge_date: str
+):
     """处理合并请求"""
     query = update.callback_query
-    
+
     try:
         # 检查是否已经合并过
         merge_record = await db_operations.get_merge_record(merge_date)
-        
+
         if merge_record:
             # 已经合并过，提示用户确认
             await query.answer()
-            
+
             # 显示确认对话框
             confirm_text = (
                 f"⚠️ 警告：{merge_date} 的增量报表已经合并过！\n\n"
@@ -69,20 +76,27 @@ async def _handle_merge_request(update: Update, context: ContextTypes.DEFAULT_TY
                 f"⚠️ 再次合并会导致数据重复累加！\n"
                 f"确定要继续合并吗？"
             )
-            
-            keyboard = [[
-                InlineKeyboardButton(
-                    "✅ 确认合并",
-                    callback_data=f"merge_incremental_confirm_{merge_date}"
-                ),
-                InlineKeyboardButton(
-                    "❌ 取消",
-                    callback_data=f"merge_incremental_cancel_{merge_date}"
-                )
-            ]]
+
+            keyboard = [
+                [
+                    InlineKeyboardButton(
+                        "✅ 确认合并", callback_data=f"merge_incremental_confirm_{merge_date}"
+                    ),
+                    InlineKeyboardButton(
+                        "❌ 取消", callback_data=f"merge_incremental_cancel_{merge_date}"
+                    ),
+                ]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.message.reply_text(confirm_text, reply_markup=reply_markup)
+
+            try:
+                if query.message:
+                    await query.message.reply_text(confirm_text, reply_markup=reply_markup)
+                else:
+                    await query.answer("需要确认合并操作", show_alert=True)
+            except Exception as e:
+                logger.error(f"发送确认消息失败: {e}", exc_info=True)
+                await query.answer("需要确认合并操作", show_alert=True)
         else:
             # 未合并过，直接合并
             await _execute_merge(update, context, merge_date)
@@ -102,72 +116,79 @@ async def _execute_merge(update: Update, context: ContextTypes.DEFAULT_TYPE, mer
     """执行合并操作"""
     query = update.callback_query
     user_id = update.effective_user.id if update.effective_user else None
-    
+
     try:
         # 显示处理中
         await query.message.reply_text("⏳ 正在合并增量报表到全局数据...")
-        
+
         # 获取基准日期
         baseline_date = await get_or_create_baseline_date()
-        
+
         # 获取上次合并日期（如果存在）
         last_merge_date = None
         merge_records = await db_operations.get_all_merge_records()
         if merge_records:
             # 获取最新的合并日期
-            sorted_records = sorted(merge_records, key=lambda x: x.get('merged_at', ''), reverse=True)
-            last_merge_date = sorted_records[0].get('merge_date')
-        
+            sorted_records = sorted(
+                merge_records, key=lambda x: x.get("merged_at", ""), reverse=True
+            )
+            last_merge_date = sorted_records[0].get("merge_date")
+
         # 确定合并的起始日期（从上次合并日期+1天开始，或从基准日期开始）
         if last_merge_date:
             from datetime import datetime, timedelta
-            last_date = datetime.strptime(last_merge_date, '%Y-%m-%d')
-            start_date = (last_date + timedelta(days=1)).strftime('%Y-%m-%d')
+
+            last_date = datetime.strptime(last_merge_date, "%Y-%m-%d")
+            start_date = (last_date + timedelta(days=1)).strftime("%Y-%m-%d")
         else:
             start_date = baseline_date
-        
+
         # 准备增量数据（从上次合并日期+1天到当前合并日期）
         incremental_data = await prepare_incremental_data(start_date, merge_date)
-        orders_data = incremental_data.get('orders', [])
-        expense_records = incremental_data.get('expenses', [])
-        
+        orders_data = incremental_data.get("orders", [])
+        expense_records = incremental_data.get("expenses", [])
+
         if not orders_data and not expense_records:
-            await query.message.reply_text(f"✅ {merge_date} 无增量数据需要合并")
+            try:
+                if query.message:
+                    await query.message.reply_text(f"✅ {merge_date} 无增量数据需要合并")
+                else:
+                    await query.answer(f"✅ {merge_date} 无增量数据", show_alert=True)
+            except Exception as e:
+                logger.error(f"发送无增量数据提示失败: {e}", exc_info=True)
+                await query.answer(f"✅ {merge_date} 无增量数据", show_alert=True)
             return
-        
+
         # 计算统计信息
         stats = await calculate_incremental_stats(orders_data, expense_records)
-        
+
         # 合并到全局数据
         result = await merge_incremental_report_to_global(orders_data, expense_records)
-        
-        if result['success']:
+
+        if result["success"]:
             # 保存合并记录
-            total_expenses = stats['company_expenses'] + stats['other_expenses']
+            total_expenses = stats["company_expenses"] + stats["other_expenses"]
             await db_operations.save_merge_record(
                 merge_date=merge_date,
                 baseline_date=baseline_date,
                 orders_count=len(orders_data),
-                total_amount=stats['new_orders_amount'],
-                total_interest=stats['interest'],
+                total_amount=stats["new_orders_amount"],
+                total_interest=stats["interest"],
                 total_expenses=total_expenses,
-                merged_by=user_id
+                merged_by=user_id,
             )
-            
+
             # 更新按钮状态
-            keyboard = [[
-                InlineKeyboardButton(
-                    "✅ 已合并",
-                    callback_data=f"merge_incremental_{merge_date}"
-                )
-            ]]
+            keyboard = [
+                [InlineKeyboardButton("✅ 已合并", callback_data=f"merge_incremental_{merge_date}")]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             try:
                 await query.message.edit_reply_markup(reply_markup=reply_markup)
             except Exception:
                 pass  # 如果消息已编辑过，忽略错误
-            
+
             # 发送合并结果
             message = f"✅ 增量报表已合并到全局数据\n\n"
             message += f"合并日期: {merge_date}\n"
@@ -176,7 +197,9 @@ async def _execute_merge(update: Update, context: ContextTypes.DEFAULT_TYPE, mer
             message += f"📦 订单统计:\n"
             message += f"  - 订单数: {stats['new_orders_count']}\n"
             message += f"  - 订单金额: {stats['new_orders_amount']:,.2f}\n"
-            message += f"  - 新客户: {stats['new_clients_count']}个, {stats['new_clients_amount']:,.2f}\n"
+            message += (
+                f"  - 新客户: {stats['new_clients_count']}个, {stats['new_clients_amount']:,.2f}\n"
+            )
             message += f"  - 老客户: {stats['old_clients_count']}个, {stats['old_clients_amount']:,.2f}\n\n"
             message += f"💰 收入统计:\n"
             message += f"  - 利息: {stats['interest']:,.2f}\n"
@@ -187,11 +210,35 @@ async def _execute_merge(update: Update, context: ContextTypes.DEFAULT_TYPE, mer
             message += f"  - 公司开销: {stats['company_expenses']:,.2f}\n"
             message += f"  - 其他开销: {stats['other_expenses']:,.2f}\n"
             message += f"  - 总开销: {total_expenses:,.2f}\n"
-            
-            await query.message.reply_text(message)
+
+            try:
+                if query.message:
+                    await query.message.reply_text(message)
+                else:
+                    await query.answer("✅ 合并成功", show_alert=True)
+            except Exception as e:
+                logger.error(f"发送合并成功消息失败: {e}", exc_info=True)
+                await query.answer("✅ 合并成功", show_alert=True)
         else:
-            await query.message.reply_text(f"❌ 合并失败: {result.get('message', '未知错误')}")
+            try:
+                if query.message:
+                    await query.message.reply_text(
+                        f"❌ 合并失败: {result.get('message', '未知错误')}"
+                    )
+                else:
+                    await query.answer(
+                        f"❌ 合并失败: {result.get('message', '未知错误')}", show_alert=True
+                    )
+            except Exception as e:
+                logger.error(f"发送合并失败消息失败: {e}", exc_info=True)
+                await query.answer("❌ 合并失败", show_alert=True)
     except Exception as e:
         logger.error(f"执行合并失败: {e}", exc_info=True)
-        await query.message.reply_text(f"❌ 合并失败: {str(e)}")
-
+        try:
+            if query.message:
+                await query.message.reply_text(f"❌ 合并失败: {str(e)}")
+            else:
+                await query.answer(f"❌ 合并失败: {str(e)}", show_alert=True)
+        except Exception as e2:
+            logger.error(f"发送合并失败消息失败: {e2}", exc_info=True)
+            await query.answer("❌ 合并失败", show_alert=True)
