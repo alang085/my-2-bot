@@ -1,0 +1,29 @@
+[Unit]
+Description=Loan Bot Telegram Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/app
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="BOT_TOKEN=your_bot_token_here"
+Environment="ADMIN_USER_IDS=your_admin_ids_here"
+Environment="DATA_DIR=/data"
+Environment="DEBUG=0"
+
+ExecStart=/usr/bin/python3 /app/main.py
+Restart=always
+RestartSec=10
+
+# 日志配置
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=loan-bot
+
+# 资源限制
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+

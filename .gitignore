@@ -23,7 +23,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# Database
+# Database - 敏感数据文件
 *.db
 *.db-shm
 *.db-wal
@@ -31,11 +31,12 @@ wheels/
 *.sqlite3
 database_backup.sql
 
-# Config
+# Config - 敏感配置文件
 # config.py - 应该提交，只包含配置加载逻辑，不包含敏感信息
 user_config.py
 .env
 .env.local
+.env.*.local
 
 # IDE
 .vscode/
@@ -54,3 +55,46 @@ Thumbs.db
 # Excel临时文件
 temp/
 *.xlsx
+temp_*.xlsx
+
+# 测试文件（生产环境不需要）
+test_*.py
+verify_*.py
+*_test.py
+tests/
+
+# 检查脚本（开发环境使用）
+check_code_quality.bat
+check_code_quality.sh
+install_code_quality_tools.bat
+install_code_quality_tools.sh
+
+# 部署脚本（开发环境使用）
+deploy_to_zeabur.bat
+deploy_to_zeabur.sh
+
+# 备份文件
+*.bak
+*.backup
+*_backup.*
+
+# 临时文件
+*.tmp
+*.temp
+
+# 代码质量工具报告
+bandit-report.json
+bandit-report.html
+pylint-report.html
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# 开发文档（可选，生产环境不需要）
+代码结构文档.md
+数据库表清单.md
+PRODUCTION_OPTIMIZATION_SUMMARY.md
+.code-quality-commands.md

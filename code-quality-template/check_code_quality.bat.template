@@ -1,0 +1,48 @@
+@echo off
+REM 代码质量检查脚本 (Windows)
+REM 使用方法：
+REM 1. 复制此文件到项目根目录，重命名为 check_code_quality.bat
+REM 2. 根据项目结构调整 pylint 检查路径（搜索 TODO 标记）
+
+echo ========================================
+echo 代码质量检查
+echo ========================================
+
+echo.
+echo [1/7] 格式化代码 (Black)...
+black --check .
+
+echo.
+echo [2/7] 检查导入顺序 (isort)...
+isort --check-only .
+
+echo.
+echo [3/7] 代码风格检查 (flake8)...
+flake8 .
+
+echo.
+echo [4/7] 代码质量检查 (pylint)...
+REM TODO: 修改为你的项目模块路径，或使用 "." 检查整个项目
+pylint . --exit-zero
+REM 示例：
+REM pylint src/ tests/ --exit-zero
+REM pylint your_module1/ your_module2/ --exit-zero
+
+echo.
+echo [5/7] 类型检查 (mypy)...
+mypy . --ignore-missing-imports || echo mypy 检查完成（有警告）
+
+echo.
+echo [6/7] 安全检查 (bandit)...
+bandit -r . -f json -o bandit-report.json || echo bandit 检查完成
+
+echo.
+echo [7/7] 复杂度检查 (radon)...
+radon cc . --min B
+
+echo.
+echo ========================================
+echo 检查完成！
+echo ========================================
+pause
+

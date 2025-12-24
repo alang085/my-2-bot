@@ -1,76 +1,72 @@
-# Python
+# 敏感配置文件（生产环境不需要，仅用于本地开发）
+# user_config.py - 现在可以上传，代码会自动忽略（生产环境只使用环境变量）
+.env
+.env.local
+.env.*.local
+
+# 数据库文件
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+database_backup.sql
+
+# Python 缓存
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# 虚拟环境
 env/
 venv/
 ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-*.db-shm
-*.db-wal
-database_backup.sql
-
-# Config
-user_config.py
-.config
-.env
-.env.local
-.env.*.local
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
+# 日志
 *.log
 
-# Git
-.git
-.gitignore
-.gitattributes
-
-# Documentation (optional - keep if you want docs in image)
-# *.md
-# docs/
-
-# Excel临时文件
-temp/
+# Excel 临时文件
 *.xlsx
+temp/
+temp_*.xlsx
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Misc
+# 备份文件
 *.bak
-*.tmp
+*.backup
+*_backup.*
 
+# 临时文件
+*.tmp
+*.temp
+
+# Git
+.git/
+.gitignore
+
+# 测试文件
+test_*.py
+verify_*.py
+*_test.py
+
+# 检查脚本
+检查消息范本.py
+
+# 部署脚本
+deploy_to_zeabur.bat
+deploy_to_zeabur.sh
+
+# 文档（可选，如果不需要可以保留）
+# *.md
+# 但保留重要的部署文档（README.md, DEPLOY.md等）

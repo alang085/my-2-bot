@@ -1,4 +1,6 @@
-python-telegram-bot>=20.0
+# 生产环境固定版本号，确保稳定性
+# 注意：这些版本已测试，确保与代码兼容
+python-telegram-bot>=20.0,<23.0
 pytz>=2023.3
-APScheduler>=3.10.0
-openpyxl>=3.1.0
+APScheduler>=3.10.0,<4.0
+openpyxl>=3.1.0,<4.0

@@ -30,6 +30,7 @@ RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # 复制项目文件（放在依赖安装之后，代码变更不会影响依赖层缓存）
+# 使用 .dockerignore 排除不需要的文件
 COPY . .
 
 # 创建数据目录

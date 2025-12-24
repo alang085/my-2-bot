@@ -1,0 +1,42 @@
+# 开发环境代码质量工具
+# 安装方式: pip install -r requirements-dev.txt
+# 
+# 使用方法：
+# 1. 复制此文件到项目根目录，重命名为 requirements-dev.txt
+# 2. 根据项目需要添加或移除工具
+
+# 代码格式化
+black>=23.0.0
+
+# 代码风格检查
+flake8>=6.0.0
+flake8-docstrings>=1.7.0
+flake8-import-order>=0.18.2
+
+# 代码质量检查
+pylint>=2.17.0
+
+# 类型检查
+mypy>=1.0.0
+
+# 导入排序
+isort>=5.12.0
+
+# 安全检查
+bandit>=1.7.5
+
+# 代码复杂度检查
+radon>=6.0.0
+
+# 测试框架（可选）
+# pytest>=7.4.0
+# pytest-cov>=4.1.0
+# pytest-asyncio>=0.21.0
+# coverage>=7.3.0
+
+# 死代码检测（可选）
+# vulture>=2.10
+
+# 文档检查（可选）
+# pydocstyle>=6.3.0
+
