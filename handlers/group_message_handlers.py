@@ -127,6 +127,11 @@ async def _send_test_message(
         select_rotated_message,
     )
 
+    # 获取群组配置（用于获取内联键盘链接）
+    config = await db_operations.get_group_message_config_by_chat_id(chat.id)
+    bot_links = config.get("bot_links") if config else None
+    worker_links = config.get("worker_links") if config else None
+
     # 直接从数据库获取激活的防诈骗语录
     anti_fraud_messages = await db_operations.get_active_anti_fraud_messages()
 
@@ -200,8 +205,8 @@ async def _send_test_message(
     # Combine message: main message + anti-fraud message
     final_message = _combine_message_with_anti_fraud(main_message, anti_fraud_messages)
 
-    # 直接从数据库读取，直接发送消息（不添加任何按钮）
-    if await _send_group_message(context.bot, chat.id, final_message):
+    # 从数据库读取语录并发送消息（可以添加内联键盘按钮）
+    if await _send_group_message(context.bot, chat.id, final_message, bot_links, worker_links):
         await update.message.reply_text("✅ Test message sent")
         logger.info(f"Test message sent to group {chat.id} (type: {msg_type})")
     else:

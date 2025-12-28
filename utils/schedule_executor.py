@@ -117,25 +117,33 @@ def format_red_message(message: str) -> str:
     return f"⚠️ <b>{escaped_message}</b>"
 
 
-async def _send_group_message(bot, chat_id: int, message: str) -> bool:
+async def _send_group_message(
+    bot, chat_id: int, message: str, bot_links: str = None, worker_links: str = None
+) -> bool:
     """统一的群组消息发送辅助函数
-    机器人直接在群组中发送消息（不添加任何按钮）
+    机器人直接在群组中发送消息（可以添加内联键盘按钮）
 
     Args:
         bot: Telegram Bot 实例
         chat_id: 群组ID
         message: 消息内容
+        bot_links: 机器人链接（可选）
+        worker_links: 人工客服链接（可选）
 
     Returns:
         bool: 发送是否成功
     """
     try:
-        # 机器人直接在群组中发送消息，不添加任何按钮
-        logger.info(f"机器人正在向群组 {chat_id} 发送消息（直接发送，无按钮）")
+        # 创建内联键盘（如果有链接）
+        reply_markup = create_message_keyboard(bot_links, worker_links)
+
+        # 机器人直接在群组中发送消息
+        logger.info(f"机器人正在向群组 {chat_id} 发送消息")
         await bot.send_message(
             chat_id=chat_id,
             text=message,
             parse_mode="HTML",
+            reply_markup=reply_markup,
         )
         logger.info(f"✅ 消息已成功发送到群组 {chat_id}")
         return True
@@ -861,13 +869,15 @@ async def send_promotion_messages_internal(bot):
 
         for config in configs:
             chat_id = config.get("chat_id")
+            bot_links = config.get("bot_links")
+            worker_links = config.get("worker_links")
 
             if not chat_id:
                 continue
 
             try:
-                # 发送消息（直接从数据库读取，不添加按钮）
-                if await _send_group_message(bot, chat_id, final_message):
+                # 发送消息（从数据库读取语录，可以添加内联键盘按钮）
+                if await _send_group_message(bot, chat_id, final_message, bot_links, worker_links):
                     success_count += 1
                     logger.info(f"公司宣传语录已发送到群组 {chat_id}")
                 else:
