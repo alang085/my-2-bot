@@ -158,14 +158,28 @@ def admin_required(func):
             logger.warning(f"admin_required: {func.__name__} - 没有消息对象，提前返回")
             return
 
-        # 获取用户ID
+        # 获取用户ID和用户信息
         user_id = update.effective_user.id if update.effective_user else None
+        user_username = update.effective_user.username if update.effective_user else None
+        user_first_name = update.effective_user.first_name if update.effective_user else None
+        user_full_name = update.effective_user.full_name if update.effective_user else None
 
         # 确保类型一致（都是int）
         if user_id:
             user_id = int(user_id)
 
-        logger.info(f"admin_required: {func.__name__} - 用户ID: {user_id}, 管理员列表: {ADMIN_IDS}")
+        # 记录用户信息（包括用户名，便于识别）
+        user_info = f"ID: {user_id}"
+        if user_username:
+            user_info += f", @{user_username}"
+        if user_first_name:
+            user_info += f", {user_first_name}"
+        if user_full_name and user_full_name != user_first_name:
+            user_info += f" ({user_full_name})"
+
+        logger.info(
+            f"admin_required: {func.__name__} - 用户信息: {user_info}, 管理员列表: {ADMIN_IDS}"
+        )
 
         # 调试日志（仅在DEBUG模式下）
         if os.getenv("DEBUG", "0") == "1":
