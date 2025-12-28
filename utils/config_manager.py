@@ -42,24 +42,22 @@ class BotSettings(BaseSettings):
         )
 
     # Telegram Bot 配置
-    bot_token: str = Field(..., description="Telegram Bot Token") if PYDANTIC_AVAILABLE else None
-    admin_user_ids: str = Field(..., description="管理员用户ID列表（逗号分隔）") if PYDANTIC_AVAILABLE else None
+    bot_token: str = None
+    admin_user_ids: str = None
 
     # 数据目录
-    data_dir: Optional[str] = Field(
-        default=None, description="数据目录路径（可选，默认为项目根目录）"
-    ) if PYDANTIC_AVAILABLE else None
+    data_dir: Optional[str] = None
 
     # 调试模式
-    debug: bool = Field(default=False, description="调试模式（0=关闭，1=开启）") if PYDANTIC_AVAILABLE else False
+    debug: bool = False
 
     # 速率限制配置
-    rate_limit_enabled: bool = Field(default=True, description="是否启用速率限制") if PYDANTIC_AVAILABLE else True
-    rate_limit_window: int = Field(default=60, description="速率限制时间窗口（秒）") if PYDANTIC_AVAILABLE else 60
-    rate_limit_max_requests: int = Field(default=30, description="速率限制最大请求数") if PYDANTIC_AVAILABLE else 30
+    rate_limit_enabled: bool = True
+    rate_limit_window: int = 60
+    rate_limit_max_requests: int = 30
 
     # Zeabur 环境标识
-    zeabur: Optional[str] = Field(default=None, description="Zeabur 环境标识") if PYDANTIC_AVAILABLE else None
+    zeabur: Optional[str] = None
 
     @field_validator("admin_user_ids")
     @classmethod
