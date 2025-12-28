@@ -108,32 +108,9 @@ async def test_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ This command can only be used in groups or channels")
         return
 
-    # Check if there are arguments (message type)
-    if not context.args:
-        # Show selection menu
-        keyboard = [
-            [
-                InlineKeyboardButton("🌅 Start Work", callback_data="test_msg_start_work"),
-                InlineKeyboardButton("🌙 End Work", callback_data="test_msg_end_work"),
-            ],
-            [
-                InlineKeyboardButton("👋 Welcome", callback_data="test_msg_welcome"),
-                InlineKeyboardButton("📢 Promotion", callback_data="test_msg_promotion"),
-            ],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "📤 Select message type to send:\n\n"
-            "• Start Work - Test start work message\n"
-            "• End Work - Test end work message\n"
-            "• Welcome - Test welcome message\n"
-            "• Promotion - Test promotion message",
-            reply_markup=reply_markup,
-        )
-        return
-
-    # 如果有参数，直接发送对应类型的消息
-    msg_type = context.args[0].lower()
+    # 如果没有参数，默认发送开工消息
+    # 如果有参数，发送指定类型的消息
+    msg_type = context.args[0].lower() if context.args else "start_work"
     await _send_test_message(update, context, chat, msg_type)
 
 
