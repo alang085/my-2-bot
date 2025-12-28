@@ -869,15 +869,13 @@ async def send_promotion_messages_internal(bot):
 
         for config in configs:
             chat_id = config.get("chat_id")
-            bot_links = config.get("bot_links")
-            worker_links = config.get("worker_links")
 
             if not chat_id:
                 continue
 
             try:
-                # 发送消息
-                if await _send_group_message(bot, chat_id, final_message, bot_links, worker_links):
+                # 发送消息（直接从数据库读取，不添加按钮）
+                if await _send_group_message(bot, chat_id, final_message):
                     success_count += 1
                     logger.info(f"公司宣传语录已发送到群组 {chat_id}")
                 else:
