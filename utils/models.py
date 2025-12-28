@@ -38,16 +38,14 @@ except ImportError:
 class OrderModel(BaseModel):
     """订单数据模型"""
 
-    order_id: str = Field(..., description="订单ID")
-    group_id: str = Field(..., description="归属ID")
-    chat_id: int = Field(..., description="聊天ID")
-    date: str = Field(..., description="订单日期，格式：YYYY-MM-DD HH:MM:SS")
-    weekday_group: str = Field(..., description="星期分组（一、二、三、四、五、六、日）")
-    customer: Literal["A", "B"] = Field(..., description="客户类型：A=新客户，B=老客户")
-    amount: float = Field(..., gt=0, description="订单金额，必须大于0")
-    state: Literal["normal", "overdue", "breach", "end", "breach_end"] = Field(
-        ..., description="订单状态"
-    )
+    order_id: str
+    group_id: str
+    chat_id: int
+    date: str
+    weekday_group: str
+    customer: str
+    amount: float
+    state: str
 
     @field_validator("weekday_group")
     @classmethod

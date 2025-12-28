@@ -31,34 +31,35 @@ except ImportError:
 
 
 class BotSettings(BaseSettings):
-    """机器人配置设置"""
+    """机器人配置设置（兼容模式）"""
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
+    if PYDANTIC_AVAILABLE:
+        model_config = SettingsConfigDict(
+            env_file=".env",
+            env_file_encoding="utf-8",
+            case_sensitive=False,
+            extra="ignore",
+        )
 
     # Telegram Bot 配置
-    bot_token: str = Field(..., description="Telegram Bot Token")
-    admin_user_ids: str = Field(..., description="管理员用户ID列表（逗号分隔）")
+    bot_token: str = Field(..., description="Telegram Bot Token") if PYDANTIC_AVAILABLE else None
+    admin_user_ids: str = Field(..., description="管理员用户ID列表（逗号分隔）") if PYDANTIC_AVAILABLE else None
 
     # 数据目录
     data_dir: Optional[str] = Field(
         default=None, description="数据目录路径（可选，默认为项目根目录）"
-    )
+    ) if PYDANTIC_AVAILABLE else None
 
     # 调试模式
-    debug: bool = Field(default=False, description="调试模式（0=关闭，1=开启）")
+    debug: bool = Field(default=False, description="调试模式（0=关闭，1=开启）") if PYDANTIC_AVAILABLE else False
 
     # 速率限制配置
-    rate_limit_enabled: bool = Field(default=True, description="是否启用速率限制")
-    rate_limit_window: int = Field(default=60, description="速率限制时间窗口（秒）")
-    rate_limit_max_requests: int = Field(default=30, description="速率限制最大请求数")
+    rate_limit_enabled: bool = Field(default=True, description="是否启用速率限制") if PYDANTIC_AVAILABLE else True
+    rate_limit_window: int = Field(default=60, description="速率限制时间窗口（秒）") if PYDANTIC_AVAILABLE else 60
+    rate_limit_max_requests: int = Field(default=30, description="速率限制最大请求数") if PYDANTIC_AVAILABLE else 30
 
     # Zeabur 环境标识
-    zeabur: Optional[str] = Field(default=None, description="Zeabur 环境标识")
+    zeabur: Optional[str] = Field(default=None, description="Zeabur 环境标识") if PYDANTIC_AVAILABLE else None
 
     @field_validator("admin_user_ids")
     @classmethod
