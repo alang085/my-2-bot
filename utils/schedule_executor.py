@@ -4,6 +4,7 @@
 import logging
 import random
 from datetime import datetime
+from typing import Optional
 
 # 第三方库
 import pytz
@@ -27,22 +28,72 @@ scheduler = None
 _cached_admin_mentions = None
 _cached_group_chat_id = None
 
-# 记录上次发送的消息类型（用于确保公告和语录不同时发送）
-_last_sent_message_type = None  # 'announcement' 或 'promotion'
+# 群组消息发送功能已优化，不再需要记录上次发送类型
 
 
 def select_rotated_message(message: str) -> str:
-    """从多版本消息中选择一个版本（基于日期轮换），使用 ⸻ 作为分隔符"""
-    if not message or "⸻" not in message:
-        return message.strip()
+    """简化版：直接返回消息（已移除基于日期的复杂轮换逻辑）"""
+    if not message:
+        return ""
+    return message.strip()
 
-    versions = [v.strip() for v in message.split("⸻") if v.strip()]
-    if not versions:
-        return message.strip()
 
-    day_of_year = datetime.now().timetuple().tm_yday
-    version_index = day_of_year % len(versions)
-    return versions[version_index]
+def create_message_keyboard(
+    bot_links: str = None, worker_links: str = None
+) -> Optional[InlineKeyboardMarkup]:
+    """创建消息内联键盘（自动和人工按钮）
+
+    Args:
+        bot_links: 机器人链接（多个链接用换行符分隔）
+        worker_links: 人工链接（多个链接用换行符分隔）
+
+    Returns:
+        InlineKeyboardMarkup 或 None（如果没有链接）
+    """
+    keyboard = []
+
+    # 解析链接（支持换行符分隔的多个链接）
+    bot_link_list = []
+    if bot_links:
+        bot_link_list = [
+            link.strip()
+            for link in bot_links.split("\n")
+            if link.strip()
+            and (link.strip().startswith("http://") or link.strip().startswith("https://"))
+        ]
+
+    worker_link_list = []
+    if worker_links:
+        worker_link_list = [
+            link.strip()
+            for link in worker_links.split("\n")
+            if link.strip()
+            and (link.strip().startswith("http://") or link.strip().startswith("https://"))
+        ]
+
+    # 添加"Auto"按钮（机器人链接）
+    if bot_link_list:
+        # 如果只有一个链接，直接使用URL按钮
+        if len(bot_link_list) == 1:
+            keyboard.append([InlineKeyboardButton("🤖 Auto", url=bot_link_list[0])])
+        else:
+            # 多个链接：第一个链接作为主按钮
+            keyboard.append([InlineKeyboardButton("🤖 Auto", url=bot_link_list[0])])
+            # 可以添加更多按钮显示其他链接（如果需要）
+
+    # 添加"Manual"按钮（个人链接）
+    if worker_link_list:
+        if len(worker_link_list) == 1:
+            keyboard.append([InlineKeyboardButton("👤 Manual", url=worker_link_list[0])])
+        else:
+            # 多个链接：第一个链接作为主按钮
+            keyboard.append([InlineKeyboardButton("👤 Manual", url=worker_link_list[0])])
+            # 可以添加更多按钮显示其他链接（如果需要）
+
+    if not keyboard:
+        return None
+
+    return InlineKeyboardMarkup(keyboard)
 
 
 def select_random_anti_fraud_message(messages: list) -> str:
@@ -64,6 +115,66 @@ def format_red_message(message: str) -> str:
     escaped_message = html.escape(message)
     # 使用加粗和警告emoji来强调（Telegram不支持CSS样式）
     return f"⚠️ <b>{escaped_message}</b>"
+
+
+async def _send_group_message(
+    bot, chat_id: int, message: str, bot_links: str = None, worker_links: str = None
+) -> bool:
+    """统一的群组消息发送辅助函数
+    机器人直接在群组中发送消息（不使用用户转发或回复）
+
+    Args:
+        bot: Telegram Bot 实例
+        chat_id: 群组ID
+        message: 消息内容
+        bot_links: 机器人链接
+        worker_links: 人工客服链接
+
+    Returns:
+        bool: 发送是否成功
+    """
+    try:
+        # 创建内联键盘
+        reply_markup = create_message_keyboard(bot_links, worker_links)
+
+        # 机器人直接在群组中发送消息（使用 bot.send_message 直接发送）
+        logger.info(f"机器人正在向群组 {chat_id} 发送消息（直接发送，非转发）")
+        await bot.send_message(
+            chat_id=chat_id,
+            text=message,
+            parse_mode="HTML",
+            reply_markup=reply_markup,
+        )
+        logger.info(f"✅ 消息已成功发送到群组 {chat_id}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ 发送消息到群组 {chat_id} 失败: {e}", exc_info=True)
+        return False
+
+
+def _combine_message_with_anti_fraud(main_message: str, anti_fraud_messages: list) -> str:
+    """组合主消息和防诈骗语录
+
+    Args:
+        main_message: 主消息内容
+        anti_fraud_messages: 防诈骗语录列表
+
+    Returns:
+        str: 组合后的消息
+    """
+    final_message = main_message
+
+    # 添加防诈骗语录（如果存在）
+    if anti_fraud_messages:
+        random_anti_fraud = select_random_anti_fraud_message(anti_fraud_messages)
+        if random_anti_fraud:
+            # 处理多版本（如果语录包含 ⸻ 分隔符）
+            rotated_anti_fraud = select_rotated_message(random_anti_fraud)
+            if rotated_anti_fraud:
+                red_anti_fraud = format_red_message(rotated_anti_fraud)
+                final_message = f"{main_message}\n\n{red_anti_fraud}"
+
+    return final_message
 
 
 async def get_group_admins_from_chat(bot, chat_id: int) -> list:
@@ -336,7 +447,10 @@ async def send_daily_report(bot):
             # 获取当日完成的订单
             completed_orders = await db_operations.get_completed_orders_by_date(report_date)
 
-            # 获取当日违约完成的订单
+            # 获取当日违约的订单（仅当日有变动的）
+            breach_orders = await db_operations.get_breach_orders_by_date(report_date)
+
+            # 获取当日违约完成的订单（仅当日有变动的）
             breach_end_orders = await db_operations.get_breach_end_orders_by_date(report_date)
 
             # 获取日切数据
@@ -344,7 +458,12 @@ async def send_daily_report(bot):
 
             # 导出订单总表Excel
             orders_excel_path = await export_orders_to_excel(
-                valid_orders, completed_orders, breach_end_orders, daily_interest, daily_summary
+                valid_orders,
+                completed_orders,
+                breach_orders,
+                breach_end_orders,
+                daily_interest,
+                daily_summary,
             )
             logger.info(f"订单总表Excel已生成: {orders_excel_path}")
         except Exception as e:
@@ -466,62 +585,58 @@ async def setup_daily_report(bot):
 
 
 async def send_start_work_messages(bot):
-    """发送开工信息到所有配置的总群"""
+    """发送开工信息到所有配置的总群（随机选择）"""
     try:
-        pass
-
         configs = await db_operations.get_group_message_configs()
 
         if not configs:
             logger.info("没有配置的总群，跳过发送开工信息")
             return
 
+        # 获取所有激活的开工消息（随机选择）
+        start_work_messages = await db_operations.get_active_start_work_messages()
+
+        if not start_work_messages:
+            logger.warning("没有激活的开工消息，跳过发送")
+            return
+
+        # 随机选择一条开工消息
+        message = random.choice(start_work_messages)
+
+        # 处理多版本消息轮播（如果消息包含 ⸻ 分隔符）
+        rotated_message = select_rotated_message(message)
+
         # 获取激活的防诈骗语录
         anti_fraud_messages = await db_operations.get_active_anti_fraud_messages()
-
-        # 获取管理员@用户名（从指定群组获取）
-        admin_mentions = await format_admin_mentions_from_group(bot)
 
         success_count = 0
         fail_count = 0
 
         for config in configs:
             chat_id = config.get("chat_id")
-            message = config.get("start_work_message")
+            bot_links = config.get("bot_links")
+            worker_links = config.get("worker_links")
 
-            if not chat_id or not message:
+            if not chat_id:
                 continue
 
             try:
-                # 选择轮换版本
-                rotated_message = select_rotated_message(message)
+                # 组合消息：主消息 + 防诈骗语录（防诈骗也是随机选择）
+                final_message = _combine_message_with_anti_fraud(
+                    rotated_message, anti_fraud_messages
+                )
 
-                # 组合消息：主消息 + 防诈骗语录 + 管理员@用户名
-                final_message = rotated_message
-
-                # 添加防诈骗语录（如果存在）
-                if anti_fraud_messages:
-                    random_anti_fraud = select_random_anti_fraud_message(anti_fraud_messages)
-                    if random_anti_fraud:
-                        # 处理多版本（如果语录包含 ⸻ 分隔符）
-                        rotated_anti_fraud = select_rotated_message(random_anti_fraud)
-                        if rotated_anti_fraud:
-                            red_anti_fraud = format_red_message(rotated_anti_fraud)
-                            final_message = f"{rotated_message}\n\n{red_anti_fraud}"
-
-                # 添加管理员@用户名
-                if admin_mentions:
-                    final_message = f"{final_message}\n\n{admin_mentions}"
-
-                # 发送消息（使用HTML格式以支持红色文字）
-                await bot.send_message(chat_id=chat_id, text=final_message, parse_mode="HTML")
-                success_count += 1
-                logger.info(f"开工信息已发送到群组 {chat_id}")
+                # 发送消息
+                if await _send_group_message(bot, chat_id, final_message, bot_links, worker_links):
+                    success_count += 1
+                    logger.info(f"开工信息已发送到群组 {chat_id} (随机选择)")
+                else:
+                    fail_count += 1
             except Exception as e:
                 fail_count += 1
                 logger.error(f"发送开工信息到群组 {chat_id} 失败: {e}", exc_info=True)
 
-        logger.info(f"开工信息发送完成: 成功 {success_count}, 失败 {fail_count}")
+        logger.info(f"开工信息发送完成: 成功 {success_count}, 失败 {fail_count} (随机选择)")
     except Exception as e:
         logger.error(f"发送开工信息失败: {e}", exc_info=True)
 
@@ -548,62 +663,58 @@ async def setup_start_work_schedule(bot):
 
 
 async def send_end_work_messages(bot):
-    """发送收工信息到所有配置的总群"""
+    """发送收工信息到所有配置的总群（随机选择）"""
     try:
-        pass
-
         configs = await db_operations.get_group_message_configs()
 
         if not configs:
             logger.info("没有配置的总群，跳过发送收工信息")
             return
 
+        # 获取所有激活的收工消息（随机选择）
+        end_work_messages = await db_operations.get_active_end_work_messages()
+
+        if not end_work_messages:
+            logger.warning("没有激活的收工消息，跳过发送")
+            return
+
+        # 随机选择一条收工消息
+        message = random.choice(end_work_messages)
+
+        # 处理多版本消息轮播（如果消息包含 ⸻ 分隔符）
+        rotated_message = select_rotated_message(message)
+
         # 获取激活的防诈骗语录
         anti_fraud_messages = await db_operations.get_active_anti_fraud_messages()
-
-        # 获取管理员@用户名（从指定群组获取）
-        admin_mentions = await format_admin_mentions_from_group(bot)
 
         success_count = 0
         fail_count = 0
 
         for config in configs:
             chat_id = config.get("chat_id")
-            message = config.get("end_work_message")
+            bot_links = config.get("bot_links")
+            worker_links = config.get("worker_links")
 
-            if not chat_id or not message:
+            if not chat_id:
                 continue
 
             try:
-                # 选择轮换版本
-                rotated_message = select_rotated_message(message)
+                # 组合消息：主消息 + 防诈骗语录（防诈骗也是随机选择）
+                final_message = _combine_message_with_anti_fraud(
+                    rotated_message, anti_fraud_messages
+                )
 
-                # 组合消息：主消息 + 防诈骗语录 + 管理员@用户名
-                final_message = rotated_message
-
-                # 添加防诈骗语录（如果存在）
-                if anti_fraud_messages:
-                    random_anti_fraud = select_random_anti_fraud_message(anti_fraud_messages)
-                    if random_anti_fraud:
-                        # 处理多版本（如果语录包含 ⸻ 分隔符）
-                        rotated_anti_fraud = select_rotated_message(random_anti_fraud)
-                        if rotated_anti_fraud:
-                            red_anti_fraud = format_red_message(rotated_anti_fraud)
-                            final_message = f"{rotated_message}\n\n{red_anti_fraud}"
-
-                # 添加管理员@用户名
-                if admin_mentions:
-                    final_message = f"{final_message}\n\n{admin_mentions}"
-
-                # 发送消息（使用HTML格式以支持红色文字）
-                await bot.send_message(chat_id=chat_id, text=final_message, parse_mode="HTML")
-                success_count += 1
-                logger.info(f"收工信息已发送到群组 {chat_id}")
+                # 发送消息
+                if await _send_group_message(bot, chat_id, final_message, bot_links, worker_links):
+                    success_count += 1
+                    logger.info(f"收工信息已发送到群组 {chat_id} (随机选择)")
+                else:
+                    fail_count += 1
             except Exception as e:
                 fail_count += 1
                 logger.error(f"发送收工信息到群组 {chat_id} 失败: {e}", exc_info=True)
 
-        logger.info(f"收工信息发送完成: 成功 {success_count}, 失败 {fail_count}")
+        logger.info(f"收工信息发送完成: 成功 {success_count}, 失败 {fail_count} (随机选择)")
     except Exception as e:
         logger.error(f"发送收工信息失败: {e}", exc_info=True)
 
@@ -708,156 +819,18 @@ async def send_daily_operations_summary(bot):
 async def setup_daily_operations_summary(bot):
     """设置每日操作汇总定时任务（已禁用自动发送，仅保留命令查询功能）"""
     # 不再设置定时任务，用户可以通过 /daily_operations 和 /daily_operations_summary 命令查询
-    logger.info("每日操作汇总功能：已禁用自动发送，请使用命令查询")
-
-
-async def send_random_announcements(bot):
-    """随机发送公司公告到所有配置的总群（确保与宣传语录不同时发送）"""
-    await send_random_announcements_internal(bot, skip_check=False)
-
-
-async def send_random_announcements_internal(bot, skip_check=False):
-    """内部函数：发送公司公告"""
-    global _last_sent_message_type
-
-    try:
-        import random
-        from datetime import datetime
-
-        import pytz
-
-        # 检查上次发送的类型，如果上次发送的是公告，这次改为发送宣传语录
-        if not skip_check and _last_sent_message_type == "announcement":
-            logger.info("上次发送的是公告，本次改为发送宣传语录")
-            # 调用宣传语录发送函数，但传入标志避免再次检查
-            await send_company_promotion_messages_internal(bot, skip_check=True)
-            return
-
-        # 检查发送计划配置
-        schedule = await db_operations.get_announcement_schedule()
-        if not schedule or not schedule.get("is_active"):
-            logger.info("公告发送功能未激活，跳过发送")
-            return
-
-        # 检查发送间隔
-        last_sent_at = schedule.get("last_sent_at")
-        interval_hours = schedule.get("interval_hours", 3)
-
-        if last_sent_at:
-            tz = pytz.timezone("Asia/Shanghai")
-            last_sent = datetime.strptime(last_sent_at, "%Y-%m-%d %H:%M:%S")
-            last_sent = tz.localize(last_sent)
-            now = datetime.now(tz)
-
-            if (now - last_sent).total_seconds() < interval_hours * 3600:
-                logger.info(f"距离上次发送不足 {interval_hours} 小时，跳过发送")
-                return
-
-        # 获取激活的公告列表
-        announcements = await db_operations.get_company_announcements()
-
-        if not announcements:
-            logger.info("没有激活的公告，跳过发送")
-            return
-
-        # 随机选择一条公告
-        selected_announcement = random.choice(announcements)
-        message = selected_announcement.get("message")
-
-        if not message:
-            logger.warning("选中的公告消息为空，跳过发送")
-            return
-
-        # 处理多版本消息轮播（如果消息包含 ⸻ 分隔符）
-        rotated_message = select_rotated_message(message)
-
-        # 获取所有配置的总群
-        configs = await db_operations.get_group_message_configs()
-
-        if not configs:
-            logger.info("没有配置的总群，跳过发送公告")
-            return
-
-        # 获取管理员@用户名（从指定群组获取，使用缓存）
-        admin_mentions = await format_admin_mentions_from_group(bot)
-
-        # 组合消息：主消息 + 管理员@用户名
-        final_message = rotated_message
-        if admin_mentions:
-            final_message = f"{rotated_message}\n\n{admin_mentions}"
-
-        success_count = 0
-        fail_count = 0
-
-        for config in configs:
-            chat_id = config.get("chat_id")
-
-            if not chat_id:
-                continue
-
-            try:
-                await bot.send_message(chat_id=chat_id, text=final_message, parse_mode="HTML")
-                success_count += 1
-                logger.info(f"公司公告已发送到群组 {chat_id}")
-            except Exception as e:
-                fail_count += 1
-                logger.error(f"发送公司公告到群组 {chat_id} 失败: {e}", exc_info=True)
-
-        # 更新最后发送时间
-        await db_operations.update_announcement_last_sent()
-
-        # 记录本次发送的类型
-        _last_sent_message_type = "announcement"
-
-        logger.info(f"公司公告发送完成: 成功 {success_count}, 失败 {fail_count}")
-    except Exception as e:
-        logger.error(f"发送公司公告失败: {e}", exc_info=True)
+    # 功能保留，可以随时查询，但不输出日志
+    pass
 
 
 async def send_company_promotion_messages(bot):
-    """轮播发送公司宣传语录到所有配置的总群（每2小时，确保与公告不同时发送）"""
-    await send_company_promotion_messages_internal(bot, skip_check=False)
+    """轮播发送公司宣传语录到所有配置的总群（每3小时）"""
+    await send_promotion_messages_internal(bot)
 
 
-async def send_alternating_group_messages(bot):
-    """统一的消息发送函数：交替发送公告和宣传语录（确保不同时发送）"""
-    # 注意：_last_sent_message_type 在其他函数中被修改（send_random_announcements_internal, send_company_promotion_messages_internal）
-    # 这里只是读取，所以不需要 global 声明
-    try:
-        # 根据上次发送的类型决定本次发送哪个
-        if _last_sent_message_type == "announcement":
-            # 上次发送的是公告，这次发送宣传语录
-            logger.info("上次发送的是公告，本次发送宣传语录")
-            await send_company_promotion_messages_internal(bot, skip_check=True)
-        elif _last_sent_message_type == "promotion":
-            # 上次发送的是宣传语录，这次发送公告
-            logger.info("上次发送的是宣传语录，本次发送公告")
-            await send_random_announcements_internal(bot, skip_check=True)
-        else:
-            # 未设置或首次发送，随机选择其中一个
-            import random
-
-            if random.choice([True, False]):
-                logger.info("首次发送，随机选择：公告")
-                await send_random_announcements_internal(bot, skip_check=True)
-            else:
-                logger.info("首次发送，随机选择：宣传语录")
-                await send_company_promotion_messages_internal(bot, skip_check=True)
-    except Exception as e:
-        logger.error(f"发送交替消息失败: {e}", exc_info=True)
-
-
-async def send_company_promotion_messages_internal(bot, skip_check=False):
+async def send_promotion_messages_internal(bot):
     """内部函数：发送公司宣传语录"""
-    global _last_sent_message_type
-
     try:
-        # 检查上次发送的类型，如果上次发送的是宣传语录，这次发送公告
-        if not skip_check and _last_sent_message_type == "promotion":
-            logger.info("上次发送的是宣传语录，本次改为发送公告")
-            await send_random_announcements_internal(bot, skip_check=True)
-            return
-
         # 获取激活的宣传语录列表
         promotion_messages = await db_operations.get_active_promotion_messages()
 
@@ -874,47 +847,19 @@ async def send_company_promotion_messages_internal(bot, skip_check=False):
             logger.warning("没有有效的公司宣传语录（所有消息都为空），跳过发送")
             return
 
-        # 轮播选择：根据当前时间选择索引（按顺序轮播）
-        day_of_year = datetime.now().timetuple().tm_yday
-        hour = datetime.now().hour
-        # 每2小时轮播一次，一天12次，使用 (day_of_year * 12 + hour // 2) 作为索引
-        rotation_index = (day_of_year * 12 + hour // 2) % len(valid_messages)
-        selected_message = valid_messages[rotation_index].get("message")
+        # 随机选择一条宣传语录（简化：直接随机选择，不进行轮换）
+        selected_msg_dict = random.choice(valid_messages)
+        selected_message = selected_msg_dict.get("message")
 
         if not selected_message or not selected_message.strip():
             logger.warning("选中的宣传语录消息为空，跳过发送")
             return
 
-        # 处理多版本消息轮播（如果消息包含 ⸻ 分隔符）
-        rotated_message = select_rotated_message(selected_message)
-
-        # 再次检查轮播后的消息是否为空
-        if not rotated_message or not rotated_message.strip():
-            logger.warning("轮播后的宣传语录消息为空，跳过发送")
-            return
-
         # 获取激活的防诈骗语录
         anti_fraud_messages = await db_operations.get_active_anti_fraud_messages()
 
-        # 获取管理员@用户名（从指定群组获取，使用缓存）
-        admin_mentions = await format_admin_mentions_from_group(bot)
-
-        # 组合消息：主消息 + 防诈骗语录 + 管理员@用户名
-        final_message = rotated_message
-
-        # 添加防诈骗语录（如果存在）
-        if anti_fraud_messages:
-            random_anti_fraud = select_random_anti_fraud_message(anti_fraud_messages)
-            if random_anti_fraud:
-                # 处理多版本（如果语录包含 ⸻ 分隔符）
-                rotated_anti_fraud = select_rotated_message(random_anti_fraud)
-                if rotated_anti_fraud:
-                    red_anti_fraud = format_red_message(rotated_anti_fraud)
-                    final_message = f"{rotated_message}\n\n{red_anti_fraud}"
-
-        # 添加管理员@用户名
-        if admin_mentions:
-            final_message = f"{final_message}\n\n{admin_mentions}"
+        # 组合消息：主消息 + 防诈骗语录
+        final_message = _combine_message_with_anti_fraud(selected_message, anti_fraud_messages)
 
         # 获取所有配置的总群
         configs = await db_operations.get_group_message_configs()
@@ -928,29 +873,33 @@ async def send_company_promotion_messages_internal(bot, skip_check=False):
 
         for config in configs:
             chat_id = config.get("chat_id")
+            bot_links = config.get("bot_links")
+            worker_links = config.get("worker_links")
 
             if not chat_id:
                 continue
 
             try:
-                # 发送消息（使用HTML格式以支持红色文字）
-                await bot.send_message(chat_id=chat_id, text=final_message, parse_mode="HTML")
-                success_count += 1
-                logger.info(f"公司宣传语录已发送到群组 {chat_id}")
+                # 发送消息
+                if await _send_group_message(bot, chat_id, final_message, bot_links, worker_links):
+                    success_count += 1
+                    logger.info(f"公司宣传语录已发送到群组 {chat_id}")
+                else:
+                    fail_count += 1
             except Exception as e:
                 fail_count += 1
                 logger.error(f"发送公司宣传语录到群组 {chat_id} 失败: {e}", exc_info=True)
-
-        # 记录本次发送的类型
-        _last_sent_message_type = "promotion"
 
         logger.info(f"公司宣传语录发送完成: 成功 {success_count}, 失败 {fail_count}")
     except Exception as e:
         logger.error(f"发送公司宣传语录失败: {e}", exc_info=True)
 
 
-async def setup_alternating_messages_schedule(bot):
-    """设置交替消息发送任务（公告和宣传语录交替发送，每2小时执行一次）"""
+# 公司公告定时任务已删除，保留手动发送功能（用于测试）
+
+
+async def setup_promotion_messages_schedule(bot):
+    """设置公司宣传语录轮播任务（每3小时执行一次）"""
     global scheduler
 
     if scheduler is None:
@@ -958,190 +907,121 @@ async def setup_alternating_messages_schedule(bot):
         scheduler.start()
 
     try:
-        # 移除旧的独立任务（如果存在）
+        # 移除旧任务（如果存在）
         try:
             scheduler.remove_job("company_promotion_messages")
-            logger.info("已移除旧的宣传语录独立任务")
-        except Exception:
-            pass
-
-        try:
-            scheduler.remove_job("random_announcements")
-            logger.info("已移除旧的公告独立任务")
-        except Exception:
-            pass
-
-        # 添加新的统一任务（每2小时执行一次）
-        scheduler.add_job(
-            send_alternating_group_messages,
-            trigger=IntervalTrigger(hours=2),
-            args=[bot],
-            id="alternating_group_messages",
-            replace_existing=True,
-        )
-        logger.info("已设置交替消息发送任务: 每 2 小时自动发送（公告和宣传语录交替）")
-    except Exception as e:
-        logger.error(f"设置交替消息发送任务失败: {e}", exc_info=True)
-
-
-async def send_incremental_orders_report(bot):
-    """发送增量订单报表（每天23:05执行）"""
-    logger.info("=" * 60)
-    logger.info("开始执行增量订单报表生成任务")
-    logger.info("=" * 60)
-    try:
-        from config import ADMIN_IDS
-        from utils.excel_export import export_incremental_orders_report_to_excel
-        from utils.incremental_report_generator import (
-            get_or_create_baseline_date,
-            prepare_incremental_data,
-        )
-
-        # 获取或创建基准日期
-        baseline_date = await get_or_create_baseline_date()
-        current_date = datetime.now(BEIJING_TZ).strftime("%Y-%m-%d")
-
-        logger.info(f"开始生成增量订单报表 (基准日期: {baseline_date}, 当前日期: {current_date})")
-
-        # 准备增量数据
-        incremental_data = await prepare_incremental_data(baseline_date)
-        orders_data = incremental_data.get("orders", [])
-        expense_records = incremental_data.get("expenses", [])
-
-        # 获取所有授权员工（业务员）
-        authorized_users = await db_operations.get_authorized_users()
-
-        # 合并管理员和授权员工列表（去重）
-        all_recipients = list(set(ADMIN_IDS + authorized_users))
-
-        logger.info(
-            f"增量报表接收人: {len(ADMIN_IDS)} 个管理员, {len(authorized_users)} 个业务员, 总计 {len(all_recipients)} 人"
-        )
-
-        if not orders_data and not expense_records:
-            # 没有增量数据，发送提示消息
-            for user_id in all_recipients:
-                try:
-                    await bot.send_message(
-                        chat_id=user_id,
-                        text=f"📊 增量订单报表 ({current_date})\n\n"
-                        f"基准日期: {baseline_date}\n"
-                        f"当前日期: {current_date}\n\n"
-                        f"✅ 无增量数据",
-                    )
-                except Exception as e:
-                    recipient_type = "管理员" if user_id in ADMIN_IDS else "业务员"
-                    logger.error(
-                        f"发送增量报表提示给{recipient_type} {user_id} 失败: {e}", exc_info=True
-                    )
-            return
-
-        # 生成Excel报表
-        try:
-            excel_path = await export_incremental_orders_report_to_excel(
-                baseline_date, current_date, orders_data, expense_records
-            )
-            logger.info(f"增量订单报表Excel已生成: {excel_path}")
+            logger.info("已移除旧的宣传语录任务")
         except Exception as e:
-            logger.error(f"生成增量订单报表Excel失败: {e}", exc_info=True)
-            excel_path = None
+            logger.debug(f"移除旧任务时出错（可忽略）: {e}")
 
-        # 发送给所有管理员和授权员工
-        success_count = 0
-        fail_count = 0
+        # 添加定时任务（每3小时执行一次）
+        scheduler.add_job(
+            send_company_promotion_messages,
+            trigger=IntervalTrigger(hours=3),
+            args=[bot],
+            id="promotion_messages_schedule",
+            replace_existing=True,
+        )
+        logger.info("已设置公司宣传语录轮播任务: 每 3 小时自动发送")
+    except Exception as e:
+        logger.error(f"设置公司宣传语录轮播任务失败: {e}", exc_info=True)
 
-        # 检查是否已经合并过（仅管理员需要合并按钮）
-        merge_record = await db_operations.get_merge_record(current_date) if ADMIN_IDS else None
-        if merge_record:
-            merge_button_text = "⚠️ 已合并（再次合并）"
+
+# 增量报表功能已移除
+
+
+# 余额统计任务已删除，改为实时统计（在余额更新时自动保存）
+
+
+async def check_data_integrity(bot):
+    """数据完整性检查（定时任务）"""
+    try:
+        from utils.data_integrity_checker import auto_fix_common_issues, check_orders_consistency
+
+        logger.info("开始执行数据完整性检查...")
+
+        # 执行一致性检查
+        check_result = await check_orders_consistency()
+
+        if check_result.get("status") == "issues_found":
+            issues = check_result.get("issues", [])
+            logger.warning(f"发现 {len(issues)} 个数据一致性问题")
+            for issue in issues:
+                logger.warning(f"  - {issue.get('message', '未知问题')}")
+
+            # 尝试自动修复
+            fix_result = await auto_fix_common_issues()
+            if fix_result.get("status") == "success":
+                fixes = fix_result.get("fixes_applied", [])
+                if fixes:
+                    logger.info(f"已自动修复 {len(fixes)} 个问题")
+                    for fix in fixes:
+                        logger.info(f"  - {fix}")
+        elif check_result.get("status") == "success":
+            logger.info("数据完整性检查通过")
         else:
-            merge_button_text = "✅ 合并到总表"
+            logger.error(f"数据完整性检查失败: {check_result.get('error')}")
 
-        for user_id in all_recipients:
-            try:
-                if excel_path:
-                    # 只有管理员显示合并按钮
-                    reply_markup = None
-                    if user_id in ADMIN_IDS:
-                        keyboard = [
-                            [
-                                InlineKeyboardButton(
-                                    merge_button_text,
-                                    callback_data=f"merge_incremental_{current_date}",
-                                )
-                            ]
-                        ]
-                        reply_markup = InlineKeyboardMarkup(keyboard)
-
-                    with open(excel_path, "rb") as f:
-                        await bot.send_document(
-                            chat_id=user_id,
-                            document=f,
-                            filename=f"增量订单报表_{current_date}.xlsx",
-                            caption=f"📊 增量订单报表 ({current_date})\n\n"
-                            f"基准日期: {baseline_date}\n"
-                            f"订单数: {len(orders_data)}\n"
-                            f"开销记录: {len(expense_records)}\n\n"
-                            f"💡 提示：点击利息总数列可以展开查看每期利息明细",
-                            reply_markup=reply_markup,
-                        )
-                else:
-                    await bot.send_message(
-                        chat_id=user_id,
-                        text=f"📊 增量订单报表 ({current_date})\n\n"
-                        f"基准日期: {baseline_date}\n"
-                        f"订单数: {len(orders_data)}\n"
-                        f"开销记录: {len(expense_records)}\n\n"
-                        f"❌ Excel生成失败，请查看日志",
-                    )
-
-                success_count += 1
-                recipient_type = "管理员" if user_id in ADMIN_IDS else "业务员"
-                logger.info(f"增量订单报表已发送给{recipient_type} {user_id}")
-            except Exception as e:
-                fail_count += 1
-                recipient_type = "管理员" if user_id in ADMIN_IDS else "业务员"
-                logger.error(
-                    f"发送增量订单报表给{recipient_type} {user_id} 失败: {e}", exc_info=True
-                )
-
-        # 清理临时文件
-        if excel_path:
-            import os
-
-            try:
-                os.remove(excel_path)
-            except Exception as e:
-                logger.warning(f"删除临时文件失败 {excel_path}: {e}")
-
-        logger.info(f"增量订单报表发送完成: 成功 {success_count}, 失败 {fail_count}")
-        logger.info("=" * 60)
-        logger.info("增量订单报表生成任务执行完成")
-        logger.info("=" * 60)
     except Exception as e:
-        logger.error("=" * 60)
-        logger.error(f"发送增量订单报表失败: {e}", exc_info=True)
-        logger.error("=" * 60)
-        # 发送错误通知给管理员
+        logger.error(f"数据完整性检查失败: {e}", exc_info=True)
+
+
+async def setup_data_integrity_check_schedule(bot):
+    """设置数据完整性检查定时任务（每天凌晨3点执行）"""
+    global scheduler
+
+    if scheduler is None:
+        scheduler = AsyncIOScheduler()
+        scheduler.start()
+
+    try:
+        # 移除旧任务（如果存在）
         try:
-            from config import ADMIN_IDS
+            scheduler.remove_job("data_integrity_check")
+            logger.info("已移除旧的数据完整性检查任务")
+        except Exception as e:
+            logger.debug(f"移除旧任务时出错（可忽略）: {e}")
 
-            for admin_id in ADMIN_IDS:
-                try:
-                    await bot.send_message(
-                        chat_id=admin_id,
-                        text=f"❌ 增量订单报表生成失败\n\n错误: {str(e)}\n\n请检查日志获取详细信息",
-                    )
-                except Exception as notify_error:
-                    logger.error(
-                        f"发送错误通知给管理员 {admin_id} 失败: {notify_error}", exc_info=True
-                    )
-        except Exception as notify_error:
-            logger.error(f"发送错误通知失败: {notify_error}", exc_info=True)
+        # 添加定时任务（每天凌晨3点执行）
+        scheduler.add_job(
+            check_data_integrity,
+            trigger=CronTrigger(hour=3, minute=0, timezone=BEIJING_TZ),
+            args=[bot],
+            id="data_integrity_check",
+            replace_existing=True,
+        )
+        logger.info("已设置数据完整性检查任务: 每天 03:00 自动检查")
+    except Exception as e:
+        logger.error(f"设置数据完整性检查任务失败: {e}", exc_info=True)
 
 
-async def setup_incremental_orders_report(bot):
-    """设置增量订单报表定时任务（每天23:05执行）"""
+async def create_database_backup(bot):
+    """创建数据库备份（定时任务）"""
+    try:
+        from utils.backup_manager import cleanup_old_backups, create_backup, verify_backup
+
+        logger.info("开始创建数据库备份...")
+
+        # 创建备份
+        backup_path = create_backup()
+
+        # 验证备份
+        if verify_backup(backup_path):
+            logger.info(f"数据库备份创建成功: {backup_path}")
+
+            # 清理旧备份（只保留最新的10个）
+            deleted_count = cleanup_old_backups(keep_count=10)
+            if deleted_count > 0:
+                logger.info(f"已清理 {deleted_count} 个旧备份")
+        else:
+            logger.error("数据库备份验证失败")
+
+    except Exception as e:
+        logger.error(f"创建数据库备份失败: {e}", exc_info=True)
+
+
+async def setup_database_backup_schedule(bot):
+    """设置数据库备份定时任务（每天凌晨2点执行）"""
     global scheduler
 
     if scheduler is None:
@@ -1149,88 +1029,21 @@ async def setup_incremental_orders_report(bot):
         scheduler.start()
 
     try:
+        # 移除旧任务（如果存在）
+        try:
+            scheduler.remove_job("database_backup")
+            logger.info("已移除旧的数据库备份任务")
+        except Exception as e:
+            logger.debug(f"移除旧任务时出错（可忽略）: {e}")
+
+        # 添加定时任务（每天凌晨2点执行）
         scheduler.add_job(
-            send_incremental_orders_report,
-            trigger=CronTrigger(hour=23, minute=5, timezone=BEIJING_TZ),
+            create_database_backup,
+            trigger=CronTrigger(hour=2, minute=0, timezone=BEIJING_TZ),
             args=[bot],
-            id="incremental_orders_report",
+            id="database_backup",
             replace_existing=True,
         )
-        logger.info("已设置增量订单报表任务: 每天 23:05 自动发送")
+        logger.info("已设置数据库备份任务: 每天 02:00 自动备份")
     except Exception as e:
-        logger.error(f"设置增量订单报表任务失败: {e}", exc_info=True)
-
-
-async def save_daily_balance(bot):
-    """每天11点统计并保存GCASH和PayMaya账户的总余额"""
-    try:
-        # 获取当前日期（北京时区）
-        now = datetime.now(BEIJING_TZ)
-        date_str = now.strftime("%Y-%m-%d")
-
-        logger.info(f"开始统计并保存 {date_str} 的账户余额...")
-
-        # 获取所有账户
-        accounts = await db_operations.get_all_payment_accounts()
-
-        if not accounts:
-            logger.warning("没有找到任何支付账户")
-            return
-
-        # 统计总余额
-        gcash_total = 0.0
-        paymaya_total = 0.0
-        saved_count = 0
-
-        for account in accounts:
-            account_id = account.get("id")
-            account_type = account.get("account_type", "").lower()
-            balance = account.get("balance", 0) or 0.0
-
-            # 只处理GCASH和PayMaya账户
-            if account_type in ("gcash", "paymaya"):
-                # 保存余额历史
-                await db_operations.record_payment_balance_history(
-                    account_id=account_id, account_type=account_type, balance=balance, date=date_str
-                )
-                saved_count += 1
-
-                # 累加总余额
-                if account_type == "gcash":
-                    gcash_total += balance
-                elif account_type == "paymaya":
-                    paymaya_total += balance
-
-        total = gcash_total + paymaya_total
-
-        logger.info(
-            f"余额统计完成 - 日期: {date_str}, "
-            f"GCASH: {gcash_total:,.2f}, "
-            f"PayMaya: {paymaya_total:,.2f}, "
-            f"总计: {total:,.2f}, "
-            f"已保存 {saved_count} 个账户"
-        )
-
-    except Exception as e:
-        logger.error(f"保存每日余额失败: {e}", exc_info=True)
-
-
-async def setup_daily_balance_save(bot):
-    """设置每日余额统计任务（每天11:00执行）"""
-    global scheduler
-
-    if scheduler is None:
-        scheduler = AsyncIOScheduler()
-        scheduler.start()
-
-    try:
-        scheduler.add_job(
-            save_daily_balance,
-            trigger=CronTrigger(hour=11, minute=0, timezone=BEIJING_TZ),
-            args=[bot],
-            id="daily_balance_save",
-            replace_existing=True,
-        )
-        logger.info("已设置每日余额统计任务: 每天 11:00 自动保存")
-    except Exception as e:
-        logger.error(f"设置每日余额统计任务失败: {e}", exc_info=True)
+        logger.error(f"设置数据库备份任务失败: {e}", exc_info=True)
