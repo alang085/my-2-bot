@@ -1,0 +1,98 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0 -- /Library/Developer/CommandLineTools/usr/bin/python3
+cachedir: .pytest_cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /Users/macbookair/Downloads/未命名文件夹/loan005.bot/bot3
+configfile: pytest.ini
+plugins: benchmark-5.2.3, asyncio-0.21.1, anyio-3.7.1, cov-7.0.0
+asyncio: mode=auto
+collecting ... collected 67 items
+
+tests/functional/test_report_generation.py::test_daily_changes_report_structure SKIPPED [  1%]
+tests/functional/test_report_generation.py::test_report_excel_file_creation PASSED [  2%]
+tests/integration/test_cross_module_integration.py::test_order_creation_to_finance_stats PASSED [  4%]
+tests/integration/test_cross_module_integration.py::test_payment_to_order_state_integration PASSED [  5%]
+tests/integration/test_cross_module_integration.py::test_income_record_to_stats_integration PASSED [  7%]
+tests/integration/test_cross_module_integration.py::test_undo_operation_data_rollback PASSED [  8%]
+tests/integration/test_cross_module_integration.py::test_complete_order_lifecycle PASSED [ 10%]
+tests/integration/test_income_record_flow.py::test_income_record_flow PASSED [ 11%]
+tests/integration/test_income_record_flow.py::test_income_record_with_order_completion PASSED [ 13%]
+tests/integration/test_income_record_flow.py::test_income_record_query_integration PASSED [ 14%]
+tests/integration/test_order_creation_flow.py::test_order_creation_complete_flow FAILED [ 16%]
+tests/integration/test_order_creation_flow.py::test_order_creation_with_validation_error PASSED [ 17%]
+tests/integration/test_order_creation_flow.py::test_order_creation_database_integration PASSED [ 19%]
+tests/integration/test_order_state_flow.py::test_order_state_change_flow PASSED [ 20%]
+tests/integration/test_order_state_flow.py::test_order_state_transition_validation PASSED [ 22%]
+tests/integration/test_order_state_flow.py::test_order_completion_income_recording PASSED [ 23%]
+tests/integration/test_order_state_flow.py::test_order_state_change_statistics_update PASSED [ 25%]
+tests/integration/test_payment_balance_flow.py::test_payment_balance_update_flow PASSED [ 26%]
+tests/integration/test_payment_balance_flow.py::test_payment_balance_multiple_accounts PASSED [ 28%]
+tests/integration/test_undo_operation_flow.py::test_undo_operation_flow PASSED [ 29%]
+tests/integration/test_undo_operation_flow.py::test_undo_expense_operation PASSED [ 31%]
+tests/integration/test_undo_operation_flow.py::test_undo_order_operation PASSED [ 32%]
+tests/unit/db/test_income_basic.py::test_record_income_uses_dataclass PASSED [ 34%]
+tests/unit/db/test_income_basic.py::test_record_income_optional_params PASSED [ 35%]
+tests/unit/db/test_orders_basic.py::test_create_order_success PASSED     [ 37%]
+tests/unit/db/test_orders_basic.py::test_create_order_duplicate PASSED   [ 38%]
+tests/unit/db/test_orders_basic.py::test_create_order_with_custom_timestamps PASSED [ 40%]
+tests/unit/db/test_orders_basic.py::test_create_order_all_states PASSED  [ 41%]
+tests/unit/utils/test_date_validation.py::test_validate_date_valid PASSED [ 43%]
+tests/unit/utils/test_date_validation.py::test_validate_date_invalid_format PASSED [ 44%]
+tests/unit/utils/test_date_validation.py::test_validate_date_invalid_date PASSED [ 46%]
+tests/unit/utils/test_date_validation.py::test_validate_date_empty_string PASSED [ 47%]
+tests/unit/utils/test_date_validation.py::test_validate_date_with_whitespace PASSED [ 49%]
+tests/unit/utils/test_date_validation.py::test_validate_date_wrong_separator PASSED [ 50%]
+tests/unit/utils/test_date_validation.py::test_validate_date_custom_format PASSED [ 52%]
+tests/unit/utils/test_message_helpers.py::test_send_bilingual_message_group PASSED [ 53%]
+tests/unit/utils/test_message_helpers.py::test_send_bilingual_message_private PASSED [ 55%]
+tests/unit/utils/test_message_helpers.py::test_send_success_message PASSED [ 56%]
+tests/unit/utils/test_message_helpers.py::test_send_error_message PASSED [ 58%]
+tests/unit/utils/test_order_id_validation.py::test_validate_order_id_valid PASSED [ 59%]
+tests/unit/utils/test_order_id_validation.py::test_validate_order_id_valid_format PASSED [ 61%]
+tests/unit/utils/test_order_id_validation.py::test_validate_order_id_too_short PASSED [ 62%]
+tests/unit/utils/test_order_id_validation.py::test_validate_order_id_too_long PASSED [ 64%]
+tests/unit/utils/test_order_id_validation.py::test_validate_order_id_non_numeric PASSED [ 65%]
+tests/unit/utils/test_order_id_validation.py::test_validate_order_id_empty_string PASSED [ 67%]
+tests/unit/utils/test_order_id_validation.py::test_validate_order_id_with_whitespace PASSED [ 68%]
+tests/unit/utils/test_order_id_validation.py::test_validate_order_id_all_zeros PASSED [ 70%]
+tests/unit/utils/test_order_id_validation.py::test_validate_order_id_max_value PASSED [ 71%]
+tests/unit/utils/test_validation_helpers.py::test_validate_time_format_hour_only_valid PASSED [ 73%]
+tests/unit/utils/test_validation_helpers.py::test_validate_time_format_hour_only_invalid PASSED [ 74%]
+tests/unit/utils/test_validation_helpers.py::test_validate_time_format_hour_minute_valid PASSED [ 76%]
+tests/unit/utils/test_validation_helpers.py::test_validate_time_format_hour_minute_invalid_hour PASSED [ 77%]
+tests/unit/utils/test_validation_helpers.py::test_validate_time_format_hour_minute_invalid_minute PASSED [ 79%]
+tests/unit/utils/test_validation_helpers.py::test_validate_time_format_invalid_format PASSED [ 80%]
+tests/unit/utils/test_validation_helpers.py::test_validate_time_format_strips_whitespace PASSED [ 82%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_valid PASSED [ 83%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_integer PASSED [ 85%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_minimum PASSED [ 86%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_below_minimum PASSED [ 88%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_negative PASSED [ 89%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_zero PASSED [ 91%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_maximum PASSED [ 92%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_above_maximum PASSED [ 94%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_invalid_format PASSED [ 95%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_empty_string PASSED [ 97%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_with_whitespace PASSED [ 98%]
+tests/unit/utils/test_validation_helpers_amount.py::test_validate_amount_decimal_places PASSED [100%]
+
+=================================== FAILURES ===================================
+______________________ test_order_creation_complete_flow _______________________
+tests/integration/test_order_creation_flow.py:77: in test_order_creation_complete_flow
+    mock_stats.assert_called_once()
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/mock.py:886: in assert_called_once
+    raise AssertionError(msg)
+E   AssertionError: Expected 'update_statistics_for_new_order' to have been called once. Called 0 times.
+------------------------------ Captured log setup ------------------------------
+INFO     db.init_tables_records:init_tables_records.py:115 添加 chat_id 字段到 operation_history 表...
+INFO     init_db:init_db.py:56 数据库初始化完成
+------------------------------ Captured log call -------------------------------
+INFO     utils.order_creation_main:order_creation_main.py:459 Attempting to create order from title: '2501010105' (chat_id: 67890, manual_trigger: False)
+INFO     utils.order_creation_main:order_creation_main.py:326 Parsed order info: order_id=2501010105, customer=A, date=2025-01-01, amount=5000.0
+INFO     utils.order_creation_prepare:order_creation_prepare.py:41 创建订单 2501010105: 日期=2025-01-01, 星期分组=三, weekday()=2
+INFO     utils.order_creation_model:order_creation_model.py:111 准备插入订单 2501010105: weekday_group=三, date=2025-01-01 12:00:00
+INFO     utils.stats_helpers:stats_helpers.py:147 ✅ 统计更新完成: field=valid, amount=5000.0, count=1, group_id=S01, date=None
+INFO     utils.order_creation_notification:order_creation_notification.py:167 Historical order 2501010105 created, skipping broadcast
+=========================== short test summary info ============================
+FAILED tests/integration/test_order_creation_flow.py::test_order_creation_complete_flow - AssertionError: Expected 'update_statistics_for_new_order' to have been called once. Called 0 times.
+============= 1 failed, 65 passed, 1 skipped, 3 warnings in 2.48s ==============
