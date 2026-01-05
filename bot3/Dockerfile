@@ -22,6 +22,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制应用代码
+# 使用 .dockerignore 控制排除的文件
 COPY . .
 
 # 创建数据目录（用于数据库文件）
